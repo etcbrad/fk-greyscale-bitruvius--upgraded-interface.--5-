@@ -1,0 +1,56 @@
+{
+  "noseDrag": {
+    "before": {
+      "reactiveEnabled": true,
+      "rotation": 0,
+      "offsetX": 0,
+      "offsetY": 0,
+      "lookX": 0,
+      "lookY": 0
+    },
+    "after": {
+      "reactiveEnabled": true,
+      "rotation": 20,
+      "offsetX": 12.6,
+      "offsetY": 4.286376953125,
+      "lookX": 1,
+      "lookY": 0.6958404144683441
+    },
+    "selectedPart": "head",
+    "chinDelta": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "lookMode": {
+    "before": {
+      "reactiveEnabled": true,
+      "rotation": 0,
+      "offsetX": 0,
+      "offsetY": 0,
+      "lookX": 0,
+      "lookY": 0
+    },
+    "after": {
+      "reactiveEnabled": true,
+      "rotation": 20,
+      "offsetX": 12.6,
+      "offsetY": 11.200000000000001,
+      "lookX": 1,
+      "lookY": 1
+    },
+    "selectedPart": "head",
+    "chinDelta": {
+      "x": 38.072050248809965,
+      "y": 8.716949856888277
+    },
+    "crownDelta": {
+      "x": 61.76957207139718,
+      "y": 10.737141698346477
+    },
+    "vJointDelta": {
+      "x": 0,
+      "y": 0
+    }
+  }
+}

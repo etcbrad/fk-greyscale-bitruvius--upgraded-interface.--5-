@@ -1,0 +1,65 @@
+{
+  "left": {
+    "facingBefore": "left",
+    "facingAfterArm": "left",
+    "facingAfterLeg": "left",
+    "rightElbow": {
+      "x": 260.3728757604723,
+      "y": 2156.5743203536863
+    },
+    "rightWrist": {
+      "x": 434.8692877006988,
+      "y": 2010.604281578646
+    },
+    "rightKnee": {
+      "x": -326.62445178199505,
+      "y": 2938.664784243657
+    },
+    "rightAnkle": {
+      "x": -555.4423179219607,
+      "y": 2673.8207091066947
+    }
+  },
+  "front": {
+    "facingBefore": "front",
+    "facingAfterArm": "front",
+    "facingAfterLeg": "front",
+    "rightElbow": {
+      "x": 260.3932086250278,
+      "y": 2156.5986249315174
+    },
+    "rightWrist": {
+      "x": 434.87861555840726,
+      "y": 2010.6154314903101
+    },
+    "rightKnee": {
+      "x": -322.839619543932,
+      "y": 2412.2944490346717
+    },
+    "rightAnkle": {
+      "x": -555.4423179219606,
+      "y": 2673.8207091066956
+    }
+  },
+  "right": {
+    "facingBefore": "right",
+    "facingAfterArm": "right",
+    "facingAfterLeg": "right",
+    "rightElbow": {
+      "x": 260.3932086250278,
+      "y": 2156.5986249315174
+    },
+    "rightWrist": {
+      "x": 434.87861555840726,
+      "y": 2010.6154314903101
+    },
+    "rightKnee": {
+      "x": -322.839619543932,
+      "y": 2412.2944490346717
+    },
+    "rightAnkle": {
+      "x": -555.4423179219606,
+      "y": 2673.8207091066956
+    }
+  }
+}

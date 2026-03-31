@@ -1,0 +1,107 @@
+Original prompt: Audit this system for friction and contradiction. The waist needs to fill in like the torso, and the face needs to better calibrate to the skull and react
+
+- Audit notes:
+  - `components/Mannequin.tsx` used a torso-to-thigh fill that bypassed the root waist width, so the waist mass visually collapsed instead of reading as a continuous body section.
+  - `components/SmartFace.tsx` was an always-spinning ornament, which contradicted the skull-anchored rig and made the face feel detached from pose/reactivity.
+  - `components/Mannequin.tsx` passed `waist-teardrop-pointy-down` while `components/Bone.tsx` only typed/implemented `waist-teardrop-pointy-up`.
+
+- In progress:
+  - Completed: rebuilt torso/waist/pelvis fill around an actual waist span at the root.
+  - Completed: replaced the spinning face with a reactive skull-locked face rig.
+
+- Blockers:
+  - `node`/`npm` are not available in the sandbox PATH, so build/runtime verification needs an unrestricted command environment or an injected Homebrew PATH.
+
+- Verification:
+  - `PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run build` succeeded.
+  - Local screenshot captured at `output/web-game/audit-2026-03-30/shot-0.png`; it verified the face is visually centered inside the skull instead of free-spinning.
+  - After the final waist-geometry correction, the project still builds cleanly; follow-up local Playwright captures remained flaky and did not reliably emit a second screenshot.
+  - Playwright capture logged one pre-existing asset 404 in `output/web-game/audit-2026-03-30/errors-0.json`.
+
+- Follow-up cleanup:
+  - Removed non-essential guide-layer ornament from `components/Mannequin.tsx`: the neck/trapezius diamond fill, the shoulder-to-hip flourish path, and the heavy spine/ridge embellishments.
+  - Kept only the structural torso mass, pelvis mass, dashed spine, V-joint indicator, and neck guide so the skeleton stays readable without the extra offset-diamond read.
+
+- Final torso/control pass:
+  - Removed the remaining torso/waist guide fill polygons entirely and switched the visual body back to the actual torso/waist bones.
+  - Refined IK/FK stability by fixing the stale `ghostPose` write on mouse-up and tightening FABRIK with safer math plus a two-pass advanced solve.
+  - Refined precise controls by changing wheel click increments from 5 degrees to 1 degree, with `Alt` for fine nudges and `Shift` for coarse nudges.
+  - Screenshot verification captured at `output/torso-cleanup-check.png`.
+- Shoulder-driven oscillation:
+  - Default the kinematic mode to IK so arms/legs respond to effectors immediately and add helpers that build subtle/dramatic arm-swing phases for the walk-cycle.
+  - Trigger the oscillation when either shoulder is engaged, using the physics-mode to decide intensity, and stop the cycle on mouse release so the effect only runs during shoulder interaction.
+  - Walk-cycle artifacts captured at `output/web-game/cleanup-2026-03-30/shot-0.png`; Playwright run still cites the existing 404 (`errors-0.json`).
+- Verification:
+  - `PATH="/opt/homebrew/bin:$PATH" npm run build`.
+  - Playwright capture via `$WEB_GAME_CLIENT` against `http://127.0.0.1:4173` (look at `output/web-game/cleanup-2026-03-30` for screenshot/errors).
+- Facial alignment:
+  - Lowered the face position so the eyes rest just below the head’s midpoint and the browlane now aligns with that halfway axis; rebuild still succeeds (`dist` updated by the recent `npm run build`).
+- Rubber ribs:
+  - Blended each shoulder anchor between the collar-driven girdle connection and a navel-based anchor so the side bones behave like the more rubbery navel-to-shoulder rig in `Bitruvius-Universal-Test`; the mix ratio increases with girdle rotation so the rubberiness is most pronounced during wide arm stretches.
+  - Build updated after the change (`npm run build` still succeeds; see `/tmp/build.log` for output).
+- FK/FABRIK audit:
+  - Collapsed the live runtime to two primary control modes only (`fk` and `fabrik`) and removed the stale browser boot scaffolding from `index.html` so the app no longer carries the old CDN/Babel/importmap artifacts.
+  - Rebuilt the FABRIK solve chain around the actual limb joints instead of the girdle/toe guide chain, then normalized the drag loop so pointer coordinates are converted to plain `{ x, y }` world points before entering the solver.
+  - Added dedicated FABRIK handle overlays for wrists, elbows, shins, and ankles in `components/Mannequin.tsx` so IK activation is not blocked by silhouette overlap.
+  - Fixed two hard blockers in the runtime path:
+    - The previous `DOMPoint` target from `getSvgPoint()` collapsed to `{}` inside `solveFABRIK()` spreads, which produced `NaN` rotations and left the pose unchanged.
+    - The ground validator was rejecting arm IK because it measured toe-guide tips against the floor; it now only guards root/leg interactions and uses the foot-end joints instead.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run lint`
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Playwright FABRIK handle audit at `output/fabrik-final-check.json`
+    - Wrist drag screenshot at `output/fabrik-final-wrist.png`
+    - Elbow drag screenshot at `output/fabrik-final-elbow.png`
+- Head/neck pass:
+  - Added a dedicated crown handle above the skull so the head has a direct grab point in both modes; in FK it rotates the head around the shared chin joint, and in FABRIK it drives a dedicated neck/head aim solve instead of using the limb solver.
+  - Formalized the head/neck relationship around the shared chin joint:
+    - head = chin joint + skull bone + crown handle
+    - neck = V joint + neck path + chin joint
+    - default hierarchy still runs torso -> neck -> head, but the aim solve now distributes motion across collar and head like a mutual ball/socket.
+  - Expanded collar/head rotation limits so the crown handle has usable travel without forcing torso drift.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run lint`
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Head handle audit at `output/head-handle-check.json`
+    - Screenshot at `output/head-handle-check.png`
+  - Added a separate chin handle at the shared chin joint so chin activation is neck-led while the V joint remains reserved for future spine activation.
+  - Chin pull now uses its own solve path with collar-heavy weighting and lighter skull follow, so dragging the chin moves the neck connection first while keeping the V joint fixed.
+  - Chin verification:
+    - `output/chin-handle-check.json`
+    - `output/chin-handle-check.png`
+- Face controls / look mode:
+  - Added a face-control layer in `App.tsx` with a reactive-face toggle, manual face drag state, and a reset action so the facial rig can be switched between reactive-only and manual steering.
+  - Added a dedicated world-space nose handle in `components/Mannequin.tsx`; plain nose drag now steers facial offset/rotation/look without moving the neck chain.
+  - Added shift + drag look mode on the nose handle: it reuses the chin-pull IK solve so the chin/neck follow the drag target while the face look state tracks the same target.
+  - Updated the monitor/hotkey text and exposed face state in `render_game_to_text` for browser verification.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Playwright smoke loop via `$WEB_GAME_CLIENT` at `output/web-game/face-controls-2026-03-30`
+    - Targeted verification at `output/face-controls-check/summary.json`
+    - Screenshots at `output/face-controls-check/nose-drag.png` and `output/face-controls-check/look-mode.png`
+  - Notes:
+    - The Playwright smoke loop still reports the pre-existing 404 in `output/web-game/face-controls-2026-03-30/errors-0.json`.
+    - Targeted check confirms nose drag changes face state without moving the chin, and shift-drag moves the chin/crown while keeping the V joint fixed.
+- Facing toggle / IK bend preference:
+  - Added a new IK-facing mode (`left`, `front`, `right`) at the app level and exposed it in `render_game_to_text` plus the system monitor.
+  - Added a top-right facing pill beside the FK/FABRIK toggle so the natural bend side can be switched without opening the settings panel.
+  - Updated `solveFABRIK` to accept the facing mode and enforce a deterministic bend direction for 2-segment arm/leg chains before rebuilding joint angles.
+  - Facing scope is IK-only; FK drag behavior is unchanged.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Playwright smoke loop in `output/web-game/facing-toggle-2026-03-31`
+    - Targeted facing artifacts in `output/facing-toggle-check/summary.json`
+    - Screenshots in `output/facing-toggle-check/left.png`, `output/facing-toggle-check/front.png`, `output/facing-toggle-check/right.png`
+  - Notes:
+    - The smoke run still reports the pre-existing 404 in `output/web-game/facing-toggle-2026-03-31/errors-0.json`.
+    - `front` preserves the current mirrored convention, so a right-limb test matches `right` while `left` flips the bend side as expected.
+- Stage settings pass:
+  - Added a new `STAGE SETTINGS` section beneath the model controls inside the existing draggable settings panel.
+  - Stage state now drives the atmospheric background, optional uploaded background image, scanline toggle, and a traditional proportional SVG grid mode based on live crown-to-chin length.
+  - Stage settings persist via `localStorage`, and reload now prompts whether to restore the previous saved stage.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Playwright smoke capture at `output/web-game/stage-settings-2026-03-31/shot-0.png` with matching `state-0.json`
+  - Notes:
+    - `npm run lint` still fails on pre-existing `utils/kinematics.ts` type errors at lines 737-738; the stage-settings changes do not add new lint failures.
+    - The smoke capture still reports the existing favicon/static 404 in `errors-0.json`.

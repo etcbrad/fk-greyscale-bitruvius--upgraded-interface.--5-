@@ -1,0 +1,18 @@
+{
+  "center": {
+    "facing": "front",
+    "backView": false
+  },
+  "left": {
+    "facing": "left",
+    "backView": false
+  },
+  "right": {
+    "facing": "right",
+    "backView": false
+  },
+  "back": {
+    "facing": "front",
+    "backView": true
+  }
+}
