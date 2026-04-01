@@ -135,22 +135,32 @@ export const Mannequin: React.FC<MannequinProps> = ({
     return isRight ? biasedRotation : -biasedRotation;
   };
 
-  const PartWrapper = ({ part, isGhost = false, children }: { part: PartName; isGhost?: boolean; children?: React.ReactNode }) => {
+  const PartWrapper = ({
+    part,
+    isGhost = false,
+    interactive = true,
+    children,
+  }: {
+    part: PartName;
+    isGhost?: boolean;
+    interactive?: boolean;
+    children?: React.ReactNode;
+  }) => {
     const isSelected = selectedParts[part];
 
     const handleMouseDown = (e: React.MouseEvent<SVGGElement>) => { 
-      if (isGhost) return;
+      if (isGhost || !interactive) return;
       e.stopPropagation(); 
       onMouseDownOnPart?.(part, e); 
     };
 
     return (
       <g 
-        className={isGhost ? "pointer-events-none opacity-20" : "cursor-pointer"} 
-        onMouseDown={handleMouseDown}
-        role={isGhost ? "presentation" : "button"} 
-        aria-label={isGhost ? undefined : `Select ${getPartCategoryDisplayName(part)}`}
-        aria-pressed={isGhost ? undefined : isSelected}
+        className={isGhost ? "pointer-events-none opacity-20" : interactive ? "cursor-pointer" : "pointer-events-none"}
+        onMouseDown={interactive ? handleMouseDown : undefined}
+        role={isGhost || !interactive ? "presentation" : "button"} 
+        aria-label={isGhost || !interactive ? undefined : `Select ${getPartCategoryDisplayName(part)}`}
+        aria-pressed={isGhost || !interactive ? undefined : isSelected}
       >
         {React.Children.map(children, child =>
           // Explicitly cloneElement and pass `isSelected`, `renderMode`, and `jointConstraintMode`.
@@ -169,6 +179,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
   const PIN_INDICATOR_SIZE = ANATOMY.ROOT_SIZE * 0.7; // Size of the inner circle of the root graphic
   const PIN_INDICATOR_STROKE_COLOR = COLORS.SELECTION; // Light monochrome for stroke
   const PIN_INDICATOR_STROKE_WIDTH = 1;
+  const GIRDLE_HALO_RADIUS = ANATOMY.ROOT_SIZE * 2.4;
 
   const renderGuides = (p: Pose, j: any, isGhost: boolean = false) => {
     const girdleLen = Math.sqrt(Math.pow(ANATOMY.SHOULDER_WIDTH / 2, 2) + Math.pow(ANATOMY.TORSO, 2));
@@ -431,7 +442,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
       return (
         <g transform={`rotate(${parentAngle + girdleAngle + shellRotation})`}>
           {/* Girdle is a visible guide bone */}
-          <PartWrapper part={partGirdle} isGhost={isGhost}>
+          <PartWrapper part={partGirdle} isGhost={isGhost} interactive={false}>
             <Bone 
               rotation={0} 
               length={ANATOMY.TORSO} 
@@ -504,7 +515,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
       return (
         <g transform={`rotate(${parentAngle + girdleAngle + shellRotation})`}>
           {/* Hip Girdle is a visible guide bone */}
-          <PartWrapper part={partGirdle} isGhost={isGhost}>
+          <PartWrapper part={partGirdle} isGhost={isGhost} interactive={false}>
             <Bone 
               rotation={0} 
               length={hipShellLength} 
@@ -735,6 +746,39 @@ export const Mannequin: React.FC<MannequinProps> = ({
     );
   };
 
+  const renderGirdleHalos = () => {
+    const haloParts = [
+      { part: PartName.LShoulderGirdle, anchor: joints[PartName.LShoulder] },
+      { part: PartName.RShoulderGirdle, anchor: joints[PartName.RShoulder] },
+      { part: PartName.LHipGirdle, anchor: joints[PartName.LThigh] },
+      { part: PartName.RHipGirdle, anchor: joints[PartName.RThigh] },
+    ];
+
+    return (
+      <g data-no-export={true}>
+        {haloParts.map(({ part, anchor }) => {
+          if (!anchor) return null;
+          return (
+            <g
+              key={part}
+              transform={`translate(${anchor.x}, ${anchor.y})`}
+              className="cursor-pointer"
+              role="button"
+              aria-label={`Activate ${getPartCategoryDisplayName(part)}`}
+              aria-pressed={selectedParts[part]}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                onMouseDownOnPart?.(part, e);
+              }}
+            >
+              <circle cx="0" cy="0" r={GIRDLE_HALO_RADIUS} fill="transparent" />
+            </g>
+          );
+        })}
+      </g>
+    );
+  };
+
   const renderHeadHandle = () => {
     const crown = joints.headTip;
     if (!crown) return null;
@@ -845,6 +889,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
       {/* Render Main Skeleton */}
       {renderGuides(pose, joints, false)}
       {renderSkeleton(pose, joints, false)}
+      {renderGirdleHalos()}
       {renderNoseHandle()}
       {renderChinHandle()}
       {renderHeadHandle()}

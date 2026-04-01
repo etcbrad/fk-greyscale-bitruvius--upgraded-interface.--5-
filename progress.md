@@ -105,3 +105,29 @@ Original prompt: Audit this system for friction and contradiction. The waist nee
   - Notes:
     - `npm run lint` still fails on pre-existing `utils/kinematics.ts` type errors at lines 737-738; the stage-settings changes do not add new lint failures.
     - The smoke capture still reports the existing favicon/static 404 in `errors-0.json`.
+- Replit merge pass:
+  - Merged the incoming body-mode feature delta on top of the local stage-settings build instead of replacing the current app.
+  - Added `HULA` waist mode, left/right hand-mode controls, ground-aware ankle settling, hand biasing for arm IK, and the elbow downstream-orientation preservation tweak from the Replit update.
+  - Kept Replit-only project files out of scope and only carried over `allowedHosts: true` from the Replit Vite config.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run lint`
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Playwright capture at `output/web-game/replit-merge-2026-03-31/shot-0.png` with `state-0.json`
+  - Notes:
+    - The merged panel layout fits within the existing draggable settings panel without additional resizing changes.
+    - Runtime capture still reports the existing static 404 in `errors-0.json`.
+- Elbow IK refinement pass:
+  - Reduced elbow-guide sensitivity by heavily blending the drag target back toward the original elbow position inside `solveArmElbowGuide`, so elbow IK behaves more like a fine arm-shaping control between shoulder and wrist.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run lint`
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+- Shape-vs-halo activation refactor:
+  - Made the visible shoulder/hip girdle triangles non-interactive so shell clicks pass through to torso/waist rotation instead of directly selecting the side bones.
+  - Added invisible shoulder and hip halo hit areas for direct girdle activation around the joint attachment zones.
+  - Rebalanced shoulder/hip side-bone response so it derives more from collar/torso and waist balancing than from girdle self-rotation.
+  - Verification:
+    - `PATH="/opt/homebrew/bin:$PATH" npm run lint`
+    - `PATH="/opt/homebrew/bin:$PATH" npm run build`
+    - Playwright capture at `output/web-game/hit-refactor-2026-03-31/shot-0.png` with `state-0.json`
+  - Notes:
+    - Runtime capture still reports the existing static 404 in `errors-0.json`.

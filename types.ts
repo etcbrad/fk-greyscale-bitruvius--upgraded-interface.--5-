@@ -159,10 +159,11 @@ export type RenderMode = 'default' | 'wireframe' | 'silhouette' | 'backlight'; /
 
 export type ViewMode = 'zoomed' | 'default' | 'lotte' | 'wide' | 'mobile'; // Added 'mobile'
 
-export type KinematicMode = 'fk' | 'fabrik';
+export type KinematicMode = 'fk' | 'fabrik' | 'reactive' | 'fullBody';
 export type FacingMode = 'left' | 'front' | 'right';
 
 export type PhysicsMode = 'fluid' | 'rusted';
+export type HandMode = 'neutral' | 'passive' | 'heavy';
 
 export type TimelineKeyframe = {
   id: string;

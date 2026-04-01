@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Pose, PartName, PartSelection, PartVisibility, AnchorName, partNameToPoseKey, RenderMode, Vector2D, ViewMode, TimelineState, TimelineKeyframe, SavedPose, KinematicMode, FacingMode } from './types';
+import { Pose, PartName, PartSelection, PartVisibility, AnchorName, partNameToPoseKey, RenderMode, Vector2D, ViewMode, TimelineState, TimelineKeyframe, SavedPose, KinematicMode, FacingMode, HandMode } from './types';
 import { RESET_POSE, FLOOR_HEIGHT, JOINT_LIMITS, ANATOMY, GROUND_STRIP_HEIGHT } from './constants'; 
-import { getJointPositions, getShortestAngleDiffDeg, interpolatePoses, solveFABRIK, solveHeadAim, solveChinPull } from './utils/kinematics';
+import { getJointPositions, getShortestAngleDiffDeg, interpolatePoses, solveHeadAim, solveChinPull, solveHulaWaist, solvePoseWithIKMode } from './utils/kinematics';
 import { AdvancedGrid, Scanlines, SystemGuides } from './components/SystemGrid';
 import { Mannequin, getPartCategory, getPartCategoryDisplayName } from './components/Mannequin'; 
 import { DraggablePanel } from './components/DraggablePanel';
@@ -39,7 +39,7 @@ interface PanelRect {
   minimized: boolean;
 }
 
-type DragMode = 'idle' | 'root' | 'vJoint' | 'rotate' | 'fabrik' | 'headAim' | 'chinPull' | 'faceDrag' | 'lookAim';
+type DragMode = 'idle' | 'root' | 'hula' | 'vJoint' | 'rotate' | 'fabrik' | 'headAim' | 'chinPull' | 'faceDrag' | 'lookAim';
 
 interface FaceControlState {
   rotation: number;
@@ -95,6 +95,13 @@ const getNeckPivotMode = (dragMode: DragMode) =>
 const cycleFacingModeValue = (value: FacingMode): FacingMode =>
   value === 'left' ? 'front' : value === 'front' ? 'right' : 'left';
 const getFacingDisplayLabel = (value: FacingMode) => value === 'front' ? 'CENTER' : value.toUpperCase();
+const KINEMATIC_MODE_ORDER: KinematicMode[] = ['fk', 'fabrik', 'reactive', 'fullBody'];
+const getKinematicModeLabel = (value: KinematicMode) =>
+  value === 'fk' ? 'FK' :
+  value === 'fabrik' ? 'FABRIK' :
+  value === 'reactive' ? 'REACTIVE' :
+  'FULL BODY';
+const isIkMode = (value: KinematicMode) => value !== 'fk';
 
 const App: React.FC = () => {
   const [activePose, setActivePose] = useState<Pose>(RESET_POSE);
@@ -167,6 +174,10 @@ const App: React.FC = () => {
   const [kinematicMode, setKinematicMode] = useState<KinematicMode>('fabrik');
   const [facingMode, setFacingMode] = useState<FacingMode>('front');
   const [backView, setBackView] = useState(false);
+  const [handModes, setHandModes] = useState<{ left: HandMode; right: HandMode }>({ left: 'neutral', right: 'neutral' });
+  const handModesRef = useRef<{ left: HandMode; right: HandMode }>({ left: 'neutral', right: 'neutral' });
+  const [hulaMode, setHulaMode] = useState(false);
+  const hulaModeRef = useRef(false);
 
   const animationTimer = useRef<number | null>(null);
   const playbackStartRef = useRef<number | null>(null);
@@ -484,6 +495,7 @@ const App: React.FC = () => {
   }, []);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    'body-modes': true,
     'joint-control': true,
     'face-control': true,
     'pin-options': false,
@@ -607,6 +619,14 @@ const App: React.FC = () => {
   useEffect(() => {
     pinnedStateRef.current = pinnedState;
   }, [pinnedState]);
+
+  useEffect(() => {
+    handModesRef.current = handModes;
+  }, [handModes]);
+
+  useEffect(() => {
+    hulaModeRef.current = hulaMode;
+  }, [hulaMode]);
 
   useEffect(() => {
     faceControlStateRef.current = faceControlState;
@@ -743,6 +763,10 @@ const App: React.FC = () => {
           hasBackgroundImage: Boolean(stageSettings.backgroundImage),
           scanlinesEnabled: stageSettings.scanlinesEnabled,
         },
+        bodyModes: {
+          hulaMode,
+          handModes,
+        },
         face: {
           reactiveEnabled: isReactiveFaceEnabled,
           ...faceControlState,
@@ -778,7 +802,7 @@ const App: React.FC = () => {
       delete (window as any).render_game_to_text;
       delete (window as any).advanceTime;
     };
-  }, [activePose, activePins, backView, faceControlState, facingMode, isReactiveFaceEnabled, kinematicMode, primarySelectedPart, stageSettings.backgroundImage, stageSettings.gridMode, stageSettings.scanlinesEnabled]);
+  }, [activePose, activePins, backView, faceControlState, facingMode, handModes, hulaMode, isReactiveFaceEnabled, kinematicMode, primarySelectedPart, stageSettings.backgroundImage, stageSettings.gridMode, stageSettings.scanlinesEnabled]);
 
   const handleUndo = useCallback(() => {
     if (undoStack.current.length > 0) {
@@ -810,6 +834,11 @@ const App: React.FC = () => {
       const newRootY = dragStartInfo.current.startRootY + dy;
 
       validateAndApplyPoseUpdate({ root: { x: newRootX, y: newRootY } }, null, false, true);
+    } else if (dragModeRef.current === 'hula' && dragStartInfo.current && dragStartPose.current) {
+      const dx = transformedPoint.x - dragStartInfo.current.startX;
+      const dy = transformedPoint.y - dragStartInfo.current.startY;
+      const solvedPose = solveHulaWaist(dragStartPose.current, dx, dy, activePinsRef.current, facingMode);
+      setActivePose(solvedPose);
       
     } else if (dragModeRef.current === 'vJoint' && dragStartInfo.current) {
       const dx = transformedPoint.x - dragStartInfo.current.startX;
@@ -847,7 +876,16 @@ const App: React.FC = () => {
       if (!limb) return;
 
       setActivePose((prev) => {
-        const solvedPose = solveFABRIK(prev, limb, effectorPart, transformedPoint, activePinsRef.current, facingMode);
+        const solvedPose = solvePoseWithIKMode(
+          prev,
+          kinematicMode,
+          limb,
+          effectorPart,
+          transformedPoint,
+          activePinsRef.current,
+          facingMode,
+          handModesRef.current
+        );
         return isValidMove(solvedPose, activePinsRef.current, pinnedStateRef.current, false, effectorPart, true)
           ? solvedPose
           : prev;
@@ -880,7 +918,7 @@ const App: React.FC = () => {
       });
       setFaceControlState(getFaceControlFromPointer(nextPose || activePoseRef.current, transformedPoint));
     }
-  }, [facingMode, getFaceControlFromPointer, getSvgPoint, isValidMove, validateAndApplyPoseUpdate]);
+  }, [facingMode, getFaceControlFromPointer, getSvgPoint, isValidMove, kinematicMode, validateAndApplyPoseUpdate]);
 
   const updatePinnedState = useCallback((pins: AnchorName[]) => {
     const joints = getJointPositions(activePose, pins);
@@ -945,7 +983,7 @@ const App: React.FC = () => {
     const pivot = joints[part]; 
     if (!pivot) return;
 
-    if (kinematicMode === 'fabrik' && FABRIK_EFFECTORS.has(part) && !activePins.includes(part)) {
+    if (isIkMode(kinematicMode) && FABRIK_EFFECTORS.has(part) && !activePins.includes(part)) {
       dragModeRef.current = 'fabrik';
       effectorPartRef.current = part;
       rotatingPartRef.current = null;
@@ -974,7 +1012,7 @@ const App: React.FC = () => {
       return next;
     });
 
-    if (kinematicMode === 'fabrik') {
+    if (isIkMode(kinematicMode)) {
       dragModeRef.current = 'headAim';
       rotatingPartRef.current = null;
       effectorPartRef.current = null;
@@ -1010,7 +1048,7 @@ const App: React.FC = () => {
       return next;
     });
 
-    if (kinematicMode === 'fabrik') {
+    if (isIkMode(kinematicMode)) {
       dragModeRef.current = 'chinPull';
       rotatingPartRef.current = null;
       effectorPartRef.current = null;
@@ -1061,7 +1099,10 @@ const App: React.FC = () => {
   }, [activePose, getFaceControlFromPointer, getSvgPoint]);
 
   const cycleKinematicMode = useCallback(() => {
-    setKinematicMode(prev => prev === 'fk' ? 'fabrik' : 'fk');
+    setKinematicMode(prev => {
+      const currentIndex = KINEMATIC_MODE_ORDER.indexOf(prev);
+      return KINEMATIC_MODE_ORDER[(currentIndex + 1) % KINEMATIC_MODE_ORDER.length];
+    });
   }, []);
   const cycleFacingMode = useCallback(() => {
     setFacingMode(prev => cycleFacingModeValue(prev));
@@ -1228,9 +1269,9 @@ const App: React.FC = () => {
         <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-1">
           <span className="text-[8px] text-white/40 uppercase">System_Status</span>
           <div className="flex items-center gap-2 bg-black/40 px-2 py-1 border border-white/10 rounded">
-            <div className={`w-1.5 h-1.5 rounded-full ${kinematicMode === 'fabrik' ? 'bg-accent-purple animate-pulse' : 'bg-accent-green'}`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${isIkMode(kinematicMode) ? 'bg-accent-purple animate-pulse' : 'bg-accent-green'}`} />
             <span className="text-[9px] font-bold text-white/70 tracking-widest">
-              {kinematicMode === 'fabrik' ? 'FABRIK READY' : 'FK READY'}
+              {isIkMode(kinematicMode) ? `${getKinematicModeLabel(kinematicMode)} READY` : 'FK READY'}
             </span>
           </div>
         </div>
@@ -1241,19 +1282,19 @@ const App: React.FC = () => {
           <button
             onClick={cycleKinematicMode}
             className={`px-3 py-2 rounded-full border transition-all duration-300 flex items-center gap-2 ${
-              kinematicMode !== 'fk' 
+              isIkMode(kinematicMode)
               ? 'bg-accent-purple/30 border-accent-purple text-white shadow-[0_0_10px_rgba(168,85,247,0.3)]' 
               : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
             }`}
-            aria-label={`Kinematic Mode: ${kinematicMode.toUpperCase()}`}
+            aria-label={`Kinematic Mode: ${getKinematicModeLabel(kinematicMode)}`}
           >
-            <span className="text-[10px] font-bold tracking-tighter">{kinematicMode.toUpperCase()}</span>
+            <span className="text-[10px] font-bold tracking-tighter">{getKinematicModeLabel(kinematicMode)}</span>
           </button>
 
           <button
             onClick={cycleFacingMode}
             className={`px-3 py-2 rounded-full border transition-all duration-300 flex items-center gap-2 ${
-              kinematicMode === 'fabrik'
+              isIkMode(kinematicMode)
                 ? 'bg-accent-green/20 border-accent-green/40 text-white hover:bg-accent-green/30'
                 : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
             }`}
@@ -1318,6 +1359,58 @@ const App: React.FC = () => {
 
           {activeTab === 'model' ? (
             <>
+              <div className="flex flex-col gap-1 w-full text-left border-b border-white/10 pb-2 mb-2">
+                <button
+                  onClick={() => toggleSection('body-modes')}
+                  className="flex items-center justify-between w-full text-focus-ring font-bold uppercase tracking-wide hover:text-white transition-colors"
+                >
+                  <span>BODY MODES</span>
+                  <span className="text-[10px] opacity-50">{expandedSections['body-modes'] ? '▼' : '▶'}</span>
+                </button>
+
+                {expandedSections['body-modes'] && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div className="bg-white/5 p-2 rounded border border-white/10 flex flex-col gap-1">
+                      <span className="text-white/40 uppercase text-[8px]">Waist_Mode</span>
+                      <button
+                        onClick={() => setHulaMode(prev => !prev)}
+                        className={`w-full text-[9px] font-bold px-2 py-1.5 border transition-all ${
+                          hulaMode
+                            ? 'bg-accent-purple/30 border-accent-purple text-white shadow-[0_0_8px_rgba(168,85,247,0.3)]'
+                            : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
+                        }`}
+                      >
+                        {hulaMode ? 'HULA ACTIVE' : 'HULA OFF'}
+                      </button>
+                      <span className="text-white/30 text-[8px] leading-tight">
+                        Drag the root or hip triangle to sway the waist while pinned feet stay grounded.
+                      </span>
+                    </div>
+
+                    {(['left', 'right'] as const).map(side => (
+                      <div key={side} className="bg-white/5 p-2 rounded border border-white/10 flex flex-col gap-1">
+                        <span className="text-white/40 uppercase text-[8px]">{side === 'left' ? 'Left' : 'Right'}_Hand_Mode</span>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['neutral', 'passive', 'heavy'] as HandMode[]).map(mode => (
+                            <button
+                              key={mode}
+                              onClick={() => setHandModes(prev => ({ ...prev, [side]: mode }))}
+                              className={`text-[8px] font-bold px-1 py-1 border transition-all ${
+                                handModes[side] === mode
+                                  ? 'bg-accent-green/30 border-accent-green text-accent-green'
+                                  : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70 hover:border-white/30'
+                              }`}
+                            >
+                              {mode === 'neutral' ? 'NEUT' : mode === 'passive' ? 'PASS' : 'HEAVY'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Section: Joint Control */}
               <div className="flex flex-col gap-1 w-full text-left border-b border-white/10 pb-2 mb-2">
             <button 
@@ -1356,8 +1449,8 @@ const App: React.FC = () => {
                       <div className="w-full text-[9px] px-2 py-1 border border-white/10 bg-white/5 text-white/70">
                         {primarySelectedPart === PartName.Collar
                           ? `Rigid neck bone. Pivot is ${getNeckPivotMode(dragModeRef.current)}.`
-                          : kinematicMode === 'fabrik' && FABRIK_EFFECTORS.has(primarySelectedPart)
-                            ? 'FABRIK drag available on this joint.'
+                          : isIkMode(kinematicMode) && FABRIK_EFFECTORS.has(primarySelectedPart)
+                            ? `${getKinematicModeLabel(kinematicMode)} drag available on this joint.`
                             : 'FK rotation is active on this joint.'}
                       </div>
                     </div>
@@ -1754,7 +1847,7 @@ const App: React.FC = () => {
 
             {expandedSections['system-monitor'] && (
               <div className="mt-2 flex flex-col gap-1">
-                <div className="flex gap-4 justify-between w-full"><span>KINEMATICS:</span> <span className="text-accent-purple text-right">{kinematicMode.toUpperCase()}</span></div>
+                <div className="flex gap-4 justify-between w-full"><span>KINEMATICS:</span> <span className="text-accent-purple text-right">{getKinematicModeLabel(kinematicMode)}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>FACING:</span> <span className="text-accent-green text-right">{getFacingDisplayLabel(facingMode)}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>BACK VIEW:</span> <span className="text-accent-red text-right">{backView ? 'ON' : 'OFF'}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>VIEWPORT:</span> <span className="text-accent-green text-right">{viewMode.toUpperCase()}</span></div>
@@ -1762,6 +1855,9 @@ const App: React.FC = () => {
                 <div className="flex gap-4 justify-between w-full"><span>ACTIVE JOINT:</span> <span className="text-focus-ring">{primarySelectedPart ? getPartCategoryDisplayName(primarySelectedPart) : 'NONE'}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>DISPLAY MODE:</span> <span className="text-focus-ring">{getRenderModeDisplayName(renderMode).toUpperCase()}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>STAGE GRID:</span> <span className="text-focus-ring">{stageSettings.gridMode.toUpperCase()}</span></div>
+                <div className="flex gap-4 justify-between w-full"><span>HULA MODE:</span> <span className="text-selection">{hulaMode ? 'ON' : 'OFF'}</span></div>
+                <div className="flex gap-4 justify-between w-full"><span>L HAND:</span> <span className="text-selection">{handModes.left.toUpperCase()}</span></div>
+                <div className="flex gap-4 justify-between w-full"><span>R HAND:</span> <span className="text-selection">{handModes.right.toUpperCase()}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>NECK PIVOT:</span> <span className="text-selection">{getNeckPivotMode(dragModeRef.current).toUpperCase()}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>FACE REACTION:</span> <span className="text-selection">{isReactiveFaceEnabled ? 'ON' : 'OFF'}</span></div>
                 <div className="flex gap-4 justify-between w-full"><span>FACE DRAG:</span> <span className="text-selection">{dragModeRef.current === 'lookAim' ? 'LOOK IK' : 'NOSE'}</span></div>
@@ -2135,7 +2231,7 @@ const App: React.FC = () => {
                   if (!transformedPoint) return;
                   isDragging.current = true;
                   dragStartPose.current = activePose;
-                  dragModeRef.current = 'root';
+                  dragModeRef.current = hulaModeRef.current ? 'hula' : 'root';
                   dragStartInfo.current = { startX: transformedPoint.x, startY: transformedPoint.y, startRootX: activePose.root.x, startRootY: activePose.root.y }; 
                 }}
                 onMouseDownOnRoot={(e) => { 
@@ -2144,7 +2240,7 @@ const App: React.FC = () => {
                   if (!transformedPoint) return;
                   isDragging.current = true;
                   dragStartPose.current = activePose;
-                  dragModeRef.current = 'root';
+                  dragModeRef.current = hulaModeRef.current ? 'hula' : 'root';
                   dragStartInfo.current = { startX: transformedPoint.x, startY: transformedPoint.y, startRootX: activePose.root.x, startRootY: activePose.root.y }; 
                 }}
                 onMouseDownOnVJoint={handleMouseDownOnVJoint}
@@ -2159,7 +2255,7 @@ const App: React.FC = () => {
                 shellPoseMode={shellPoseMode}
                 facingMode={facingMode}
                 backView={backView}
-                showFabrikHandles={kinematicMode === 'fabrik'}
+                showFabrikHandles={isIkMode(kinematicMode)}
                 renderMode={renderMode}
               />
             </g>

@@ -7,7 +7,8 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        // host: '0.0.0.0', // Removed external access - enable only for explicit testing scenarios
+        allowedHosts: ['localhost', '127.0.0.1'], // Whitelist specific hosts to prevent DNS rebinding attacks
       },
       plugins: [react()],
       define: {

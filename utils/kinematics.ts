@@ -1,7 +1,7 @@
 
 import { applyCoMStabilizer, applyGroundContact, applySpringFeel, getFaceShift } from './puppet-core';
-import { ANATOMY, BASE_ROTATIONS, RIGGING, JOINT_LIMITS } from '../constants';
-import { PartName, Pose, Vector2D, AnchorName, JointConstraint, CHILD_MAP, LIMB_SEQUENCES, partNameToPoseKey, FaceControls, FacingMode } from '../types';
+import { ANATOMY, BASE_ROTATIONS, RIGGING, JOINT_LIMITS, FLOOR_HEIGHT } from '../constants';
+import { PartName, Pose, Vector2D, AnchorName, JointConstraint, CHILD_MAP, LIMB_SEQUENCES, partNameToPoseKey, FaceControls, FacingMode, HandMode, KinematicMode } from '../types';
 
 export const lerp = (start: number, end: number, t: number): number => start * (1 - t) + end * t;
 const mixVec = (a: Vector2D, b: Vector2D, t: number): Vector2D => ({
@@ -144,8 +144,9 @@ const _calculateGlobalJointPositions = (
         
         const torsoShoulderAttach = girdleCalc.globalEndPoint;
         const waistShoulderAttach = addVec(baseRoot, rotateVec(isRight ? RIGGING.R_SHOULDER_X_OFFSET_FROM_COLLAR_CENTER : RIGGING.L_SHOULDER_X_OFFSET_FROM_COLLAR_CENTER, RIGGING.SHOULDER_Y_OFFSET_FROM_COLLAR_END, waistCalc.childInheritedGlobalAngle));
-        const rubberFactor = Math.min(1, Math.abs(getTotalRotation(partGirdle, pose)) / 90);
-        const rubberBlend = 0.25 + rubberFactor * 0.25;
+        const collarBalanceFactor = Math.min(1, Math.abs(getTotalRotation(PartName.Collar, pose)) / 55);
+        const torsoBalanceFactor = Math.min(1, Math.abs(getTotalRotation(PartName.Torso, pose)) / 70);
+        const rubberBlend = 0.18 + collarBalanceFactor * 0.3 + torsoBalanceFactor * 0.12;
         const shoulderAttach = mixVec(torsoShoulderAttach, waistShoulderAttach, rubberBlend);
         const upperArmCalc = calculateBoneGlobalPositions(shoulderAttach, girdleCalc.childInheritedGlobalAngle, getTotalRotation(isRight ? PartName.RShoulder : PartName.LShoulder, pose), ANATOMY.UPPER_ARM, offsets[isRight ? PartName.RShoulder : PartName.LShoulder], false);
         const forearmCalc = calculateBoneGlobalPositions(upperArmCalc.globalEndPoint, upperArmCalc.childInheritedGlobalAngle, getTotalRotation(isRight ? 'rForearm' : 'lForearm', pose), ANATOMY.LOWER_ARM, offsets[isRight ? PartName.RElbow : PartName.LElbow], false);
@@ -166,7 +167,10 @@ const _calculateGlobalJointPositions = (
         const girdleAngle = getHipGirdleAngle(isRight);
         const girdleCalc = calculateBoneGlobalPositions(baseRoot, waistCalc.childInheritedGlobalAngle, girdleAngle + getTotalRotation(partGirdle, pose), hipGirdleLen, offsets[partGirdle], false);
         
-        const hipAttach = girdleCalc.globalEndPoint;
+        const waistHipAttach = girdleCalc.globalEndPoint;
+        const lowerBodyBalanceFactor = Math.min(1, Math.abs(getTotalRotation(PartName.Waist, pose)) / 45);
+        const rootHipAttach = addVec(baseRoot, rotateVec(isRight ? ANATOMY.HIP_WIDTH * 0.22 : -ANATOMY.HIP_WIDTH * 0.22, ANATOMY.WAIST * 0.92, waistCalc.childInheritedGlobalAngle));
+        const hipAttach = mixVec(waistHipAttach, rootHipAttach, 0.15 + lowerBodyBalanceFactor * 0.25);
         const thighCalc = calculateBoneGlobalPositions(hipAttach, girdleCalc.childInheritedGlobalAngle, getTotalRotation(isRight ? PartName.RThigh : PartName.LThigh, pose), ANATOMY.LEG_UPPER, offsets[isRight ? PartName.RThigh : PartName.LThigh], false);
         const calfCalc = calculateBoneGlobalPositions(thighCalc.globalEndPoint, thighCalc.childInheritedGlobalAngle, getTotalRotation(isRight ? 'rCalf' : 'lCalf', pose), ANATOMY.LEG_LOWER, offsets[isRight ? PartName.RSkin : PartName.LSkin], false);
         const ankleAngle = calfCalc.childInheritedGlobalAngle + getTotalRotation(isRight ? PartName.RAnkle : PartName.LAnkle, pose);
@@ -290,6 +294,11 @@ export const interpolatePoses = (start: Pose, end: Pose, t: number): Pose => {
 };
 
 const normalizeAngleDeg = (angle: number): number => ((angle + 180) % 360 + 360) % 360 - 180;
+const getClosestEquivalentAngleDeg = (target: number, reference: number): number => {
+  const normalizedTarget = normalizeAngleDeg(target);
+  const normalizedReference = normalizeAngleDeg(reference);
+  return normalizedReference + getShortestAngleDiffDeg(normalizedTarget, normalizedReference);
+};
 
 const getFabrikSolveChain = (
   limbName: 'rArm' | 'lArm' | 'rLeg' | 'lLeg',
@@ -386,6 +395,8 @@ const solveArmElbowGuide = (
   target: Vector2D,
   activePins: AnchorName[]
 ): Pose => {
+  const elbowGuideSensitivity = 0.22;
+  const wristPreservationBlend = 0.18;
   const isRight = limbName === 'rArm';
   const shoulderPart = isRight ? PartName.RShoulder : PartName.LShoulder;
   const elbowPart = isRight ? PartName.RElbow : PartName.LElbow;
@@ -396,18 +407,27 @@ const solveArmElbowGuide = (
 
   const originalJoints = getJointPositions(pose, activePins);
   const shoulder = originalJoints[shoulderPart];
+  const originalElbow = originalJoints[elbowPart];
   const originalWrist = originalJoints[wristPart];
   const originalHandTip = originalJoints[handTipKey];
-  if (!shoulder || !originalWrist || !originalHandTip) return pose;
+  if (!shoulder || !originalElbow || !originalWrist || !originalHandTip) return pose;
 
   const nextPose = { ...pose };
-  const newElbow = projectPointToCircle(shoulder, ANATOMY.UPPER_ARM, target);
+  const refinedTarget = {
+    x: lerp(originalElbow.x, target.x, elbowGuideSensitivity),
+    y: lerp(originalElbow.y, target.y, elbowGuideSensitivity),
+  };
+  const newElbow = projectPointToCircle(shoulder, ANATOMY.UPPER_ARM, refinedTarget);
 
   const shoulderParentAngle = getFabrikParentAngle(nextPose, limbName);
   const shoulderPoseKey = partNameToPoseKey[shoulderPart];
   const shoulderBaseRotation = BASE_ROTATIONS[shoulderPoseKey as keyof typeof BASE_ROTATIONS] || 0;
   const upperArmGlobal = deg(Math.atan2(newElbow.y - shoulder.y, newElbow.x - shoulder.x)) - 90;
-  let shoulderLocal = normalizeAngleDeg(upperArmGlobal - shoulderParentAngle - shoulderBaseRotation);
+  const currentShoulderLocal = (pose as any)[shoulderPoseKey] || 0;
+  let shoulderLocal = getClosestEquivalentAngleDeg(
+    upperArmGlobal - shoulderParentAngle - shoulderBaseRotation,
+    currentShoulderLocal
+  );
   const shoulderLimits = JOINT_LIMITS[shoulderPoseKey];
   if (shoulderLimits) {
     shoulderLocal = Math.max(shoulderLimits.min, Math.min(shoulderLimits.max, shoulderLocal));
@@ -417,7 +437,7 @@ const solveArmElbowGuide = (
   const updatedJoints = getJointPositions(nextPose, activePins);
   const resolvedShoulder = updatedJoints[shoulderPart];
   if (!resolvedShoulder) return pose;
-  const resolvedElbow = projectPointToCircle(resolvedShoulder, ANATOMY.UPPER_ARM, target);
+  const resolvedElbow = projectPointToCircle(resolvedShoulder, ANATOMY.UPPER_ARM, refinedTarget);
   const newWrist = projectPointToCircle(resolvedElbow, ANATOMY.LOWER_ARM, originalWrist);
 
   const elbowParentAngle =
@@ -426,7 +446,11 @@ const solveArmElbowGuide = (
     shoulderLocal;
   const forearmBaseRotation = BASE_ROTATIONS[forearmKey as keyof typeof BASE_ROTATIONS] || 0;
   const forearmGlobal = deg(Math.atan2(newWrist.y - resolvedElbow.y, newWrist.x - resolvedElbow.x)) - 90;
-  let forearmLocal = normalizeAngleDeg(forearmGlobal - elbowParentAngle - forearmBaseRotation);
+  const currentForearmLocal = (pose as any)[forearmKey] || 0;
+  let forearmLocal = getClosestEquivalentAngleDeg(
+    forearmGlobal - elbowParentAngle - forearmBaseRotation,
+    currentForearmLocal
+  );
   const forearmLimits = JOINT_LIMITS[forearmKey];
   if (forearmLimits) {
     forearmLocal = Math.max(forearmLimits.min, Math.min(forearmLimits.max, forearmLocal));
@@ -436,7 +460,12 @@ const solveArmElbowGuide = (
   const originalHandGlobal = deg(Math.atan2(originalHandTip.y - originalWrist.y, originalHandTip.x - originalWrist.x)) - 90;
   const wristParentAngle = elbowParentAngle + forearmBaseRotation + forearmLocal;
   const wristBaseRotation = BASE_ROTATIONS[wristPoseKey as keyof typeof BASE_ROTATIONS] || 0;
-  let wristLocal = normalizeAngleDeg(originalHandGlobal - wristParentAngle - wristBaseRotation);
+  const currentWristLocal = (pose as any)[wristPoseKey] || 0;
+  const desiredWristLocal = getClosestEquivalentAngleDeg(
+    originalHandGlobal - wristParentAngle - wristBaseRotation,
+    currentWristLocal
+  );
+  let wristLocal = lerp(currentWristLocal, desiredWristLocal, wristPreservationBlend);
   const wristLimits = JOINT_LIMITS[wristPoseKey];
   if (wristLimits) {
     wristLocal = Math.max(wristLimits.min, Math.min(wristLimits.max, wristLocal));
@@ -576,6 +605,367 @@ export const solveFABRIK = (
   if (effectorPart === PartName.RElbow || effectorPart === PartName.LElbow) {
     preserveElbowDownstreamOrientation(nextPose, pose, limbName, activePins);
   }
+
+  return nextPose;
+};
+
+const clampValue = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+
+const applyDeltaToPoseKey = (pose: Pose, key: keyof Pose, delta: number) => {
+  if (typeof pose[key] !== 'number' || !Number.isFinite(delta)) return;
+  const current = pose[key] as number;
+  const limits = JOINT_LIMITS[key as string];
+  const next = current + delta;
+  (pose as any)[key] = limits ? clampValue(next, limits.min, limits.max) : next;
+};
+
+const getAnchorSolveSpec = (
+  pose: Pose,
+  anchor: AnchorName,
+  target: Vector2D,
+  activePins: AnchorName[]
+): { limb: 'rArm' | 'lArm' | 'rLeg' | 'lLeg'; effector: PartName; target: Vector2D } | null => {
+  const joints = getJointPositions(pose, activePins);
+
+  if (anchor === PartName.RWrist || anchor === 'rHandTip') {
+    const wrist = joints[PartName.RWrist];
+    const tip = joints.rHandTip;
+    const wristToTip = wrist && tip ? { x: tip.x - wrist.x, y: tip.y - wrist.y } : { x: 0, y: 0 };
+    return {
+      limb: 'rArm',
+      effector: PartName.RWrist,
+      target: anchor === 'rHandTip' ? { x: target.x - wristToTip.x, y: target.y - wristToTip.y } : target,
+    };
+  }
+  if (anchor === PartName.LWrist || anchor === 'lHandTip') {
+    const wrist = joints[PartName.LWrist];
+    const tip = joints.lHandTip;
+    const wristToTip = wrist && tip ? { x: tip.x - wrist.x, y: tip.y - wrist.y } : { x: 0, y: 0 };
+    return {
+      limb: 'lArm',
+      effector: PartName.LWrist,
+      target: anchor === 'lHandTip' ? { x: target.x - wristToTip.x, y: target.y - wristToTip.y } : target,
+    };
+  }
+  if (anchor === PartName.RElbow) return { limb: 'rArm', effector: PartName.RElbow, target };
+  if (anchor === PartName.LElbow) return { limb: 'lArm', effector: PartName.LElbow, target };
+  if (anchor === PartName.RAnkle || anchor === 'rFootTip') {
+    const ankle = joints[PartName.RAnkle];
+    const tip = joints.rFootTip;
+    const ankleToTip = ankle && tip ? { x: tip.x - ankle.x, y: tip.y - ankle.y } : { x: 0, y: 0 };
+    return {
+      limb: 'rLeg',
+      effector: PartName.RAnkle,
+      target: anchor === 'rFootTip' ? { x: target.x - ankleToTip.x, y: target.y - ankleToTip.y } : target,
+    };
+  }
+  if (anchor === PartName.LAnkle || anchor === 'lFootTip') {
+    const ankle = joints[PartName.LAnkle];
+    const tip = joints.lFootTip;
+    const ankleToTip = ankle && tip ? { x: tip.x - ankle.x, y: tip.y - ankle.y } : { x: 0, y: 0 };
+    return {
+      limb: 'lLeg',
+      effector: PartName.LAnkle,
+      target: anchor === 'lFootTip' ? { x: target.x - ankleToTip.x, y: target.y - ankleToTip.y } : target,
+    };
+  }
+  if (anchor === PartName.RSkin) return { limb: 'rLeg', effector: PartName.RSkin, target };
+  if (anchor === PartName.LSkin) return { limb: 'lLeg', effector: PartName.LSkin, target };
+  return null;
+};
+
+const isAnchorOnSameLimb = (anchor: AnchorName, limbName: 'rArm' | 'lArm' | 'rLeg' | 'lLeg'): boolean => {
+  if (limbName === 'rArm') return [PartName.RElbow, PartName.RWrist, 'rHandTip'].includes(anchor as any);
+  if (limbName === 'lArm') return [PartName.LElbow, PartName.LWrist, 'lHandTip'].includes(anchor as any);
+  if (limbName === 'rLeg') return [PartName.RSkin, PartName.RAnkle, 'rFootTip'].includes(anchor as any);
+  return [PartName.LSkin, PartName.LAnkle, 'lFootTip'].includes(anchor as any);
+};
+
+const preservePinnedAnchors = (
+  pose: Pose,
+  originalPose: Pose,
+  activePins: AnchorName[],
+  draggedLimb: 'rArm' | 'lArm' | 'rLeg' | 'lLeg',
+  facingMode: FacingMode,
+  passes: number
+): Pose => {
+  let nextPose = { ...pose };
+  const originalJoints = getJointPositions(originalPose, activePins);
+
+  for (let pass = 0; pass < passes; pass++) {
+    for (const anchor of activePins) {
+      if (anchor === 'root' || anchor === PartName.Waist || isAnchorOnSameLimb(anchor, draggedLimb)) continue;
+      const target = originalJoints[anchor as string];
+      if (!target) continue;
+      const spec = getAnchorSolveSpec(nextPose, anchor, target, activePins);
+      if (!spec) continue;
+      nextPose = solveFABRIK(nextPose, spec.limb, spec.effector, spec.target, [], facingMode, 14, 0.5);
+      if (spec.limb === 'lLeg') nextPose = solveGroundAwareAnkle(nextPose, false, [], target.y + 1);
+      if (spec.limb === 'rLeg') nextPose = solveGroundAwareAnkle(nextPose, true, [], target.y + 1);
+    }
+  }
+
+  return nextPose;
+};
+
+const applyWholeBodyCompensation = (
+  pose: Pose,
+  originalPose: Pose,
+  limbName: 'rArm' | 'lArm' | 'rLeg' | 'lLeg',
+  effectorPart: PartName,
+  activePins: AnchorName[],
+  strength: number
+): Pose => {
+  const originalJoints = getJointPositions(originalPose, activePins);
+  const updatedJoints = getJointPositions(pose, activePins);
+  const originalEffector = originalJoints[effectorPart];
+  const updatedEffector = updatedJoints[effectorPart];
+  if (!originalEffector || !updatedEffector) return pose;
+
+  const dx = updatedEffector.x - originalEffector.x;
+  const dy = updatedEffector.y - originalEffector.y;
+  const side = limbName.startsWith('r') ? 1 : -1;
+  const nextPose = { ...pose };
+
+  if (limbName.includes('Arm')) {
+    applyDeltaToPoseKey(nextPose, 'torso', clampValue(side * dx * 0.022 * strength, -22, 22));
+    applyDeltaToPoseKey(nextPose, 'waist', clampValue(side * dx * 0.012 * strength, -14, 14));
+    applyDeltaToPoseKey(nextPose, 'collar', clampValue(side * dx * 0.028 * strength - dy * 0.018 * strength, -26, 26));
+    applyDeltaToPoseKey(
+      nextPose,
+      limbName === 'rArm' ? 'rShoulderGirdle' : 'lShoulderGirdle',
+      clampValue(side * dx * 0.035 * strength - dy * 0.02 * strength, -18, 18)
+    );
+    applyDeltaToPoseKey(
+      nextPose,
+      limbName === 'rArm' ? 'lShoulder' : 'rShoulder',
+      clampValue(-side * dx * 0.018 * strength, -18, 18)
+    );
+    applyDeltaToPoseKey(
+      nextPose,
+      limbName === 'rArm' ? 'rHipGirdle' : 'lHipGirdle',
+      clampValue(side * dx * 0.012 * strength, -5, 5)
+    );
+    nextPose.root = {
+      x: nextPose.root.x + dx * 0.03 * strength,
+      y: nextPose.root.y + Math.max(-18, Math.min(18, dy * 0.015 * strength)),
+    };
+  } else {
+    applyDeltaToPoseKey(nextPose, 'waist', clampValue(side * dx * 0.032 * strength, -26, 26));
+    applyDeltaToPoseKey(nextPose, 'torso', clampValue(side * dx * 0.018 * strength - dy * 0.008 * strength, -18, 18));
+    applyDeltaToPoseKey(
+      nextPose,
+      limbName === 'rLeg' ? 'rHipGirdle' : 'lHipGirdle',
+      clampValue(side * dx * 0.045 * strength - dy * 0.02 * strength, -5, 5)
+    );
+    applyDeltaToPoseKey(
+      nextPose,
+      limbName === 'rLeg' ? 'rThigh' : 'lThigh',
+      clampValue(side * dx * 0.018 * strength - dy * 0.015 * strength, -24, 24)
+    );
+    applyDeltaToPoseKey(
+      nextPose,
+      limbName === 'rLeg' ? 'lShoulder' : 'rShoulder',
+      clampValue(-side * dx * 0.02 * strength, -16, 16)
+    );
+    nextPose.root = {
+      x: nextPose.root.x + dx * 0.12 * strength,
+      y: nextPose.root.y + dy * 0.08 * strength,
+    };
+  }
+
+  return nextPose;
+};
+
+export const solvePoseWithIKMode = (
+  pose: Pose,
+  mode: KinematicMode,
+  limbName: 'rArm' | 'lArm' | 'rLeg' | 'lLeg',
+  effectorPart: PartName,
+  target: Vector2D,
+  activePins: AnchorName[],
+  facingMode: FacingMode,
+  handModes: { left: HandMode; right: HandMode }
+): Pose => {
+  let solvedPose =
+    mode === 'fullBody'
+      ? solveFABRIK(pose, limbName, effectorPart, target, activePins, facingMode, 24, 0.35)
+      : solveFABRIK(pose, limbName, effectorPart, target, activePins, facingMode);
+
+  if (mode === 'reactive' || mode === 'fullBody') {
+    const strength = mode === 'fullBody' ? 1.1 : 0.7;
+    solvedPose = applyWholeBodyCompensation(solvedPose, pose, limbName, effectorPart, activePins, strength);
+    solvedPose = solveFABRIK(
+      solvedPose,
+      limbName,
+      effectorPart,
+      target,
+      activePins,
+      facingMode,
+      mode === 'fullBody' ? 26 : 18,
+      0.4
+    );
+    solvedPose = preservePinnedAnchors(solvedPose, pose, activePins, limbName, facingMode, mode === 'fullBody' ? 2 : 1);
+    if (mode === 'fullBody') {
+      solvedPose = solveFABRIK(solvedPose, limbName, effectorPart, target, activePins, facingMode, 20, 0.35);
+    }
+  }
+
+  if (limbName === 'lLeg') {
+    solvedPose = solveGroundAwareAnkle(solvedPose, false, activePins, FLOOR_HEIGHT);
+  } else if (limbName === 'rLeg') {
+    solvedPose = solveGroundAwareAnkle(solvedPose, true, activePins, FLOOR_HEIGHT);
+  }
+
+  if (limbName === 'lArm') {
+    solvedPose = applyHandModeBias(solvedPose, false, handModes.left, activePins);
+  } else if (limbName === 'rArm') {
+    solvedPose = applyHandModeBias(solvedPose, true, handModes.right, activePins);
+  }
+
+  return solvedPose;
+};
+
+export const solveGroundAwareAnkle = (
+  pose: Pose,
+  isRight: boolean,
+  activePins: AnchorName[],
+  floorY: number
+): Pose => {
+  const ankleKey = isRight ? 'rAnkle' : 'lAnkle';
+  const anklePart = isRight ? PartName.RAnkle : PartName.LAnkle;
+  const kneePart = isRight ? PartName.RSkin : PartName.LSkin;
+  const ankleBaseRot = BASE_ROTATIONS[ankleKey as keyof typeof BASE_ROTATIONS] || 0;
+
+  const joints = getJointPositions(pose, activePins);
+  const anklePos = joints[anklePart];
+  const kneePos = joints[kneePart];
+  if (!anklePos || !kneePos) return pose;
+
+  const groundProximity = floorY - anklePos.y;
+  if (groundProximity > ANATOMY.FOOT * 1.5) return pose;
+
+  const calfGlobalDeg = deg(Math.atan2(kneePos.x - anklePos.x, anklePos.y - kneePos.y));
+  const cosTarget = (floorY - anklePos.y) / ANATOMY.FOOT;
+  if (Math.abs(cosTarget) > 1) return pose;
+
+  const acos1 = deg(Math.acos(cosTarget));
+  const acos2 = -acos1;
+  const currentLocal = (pose as any)[ankleKey] || 0;
+  const currentWorldAngle = calfGlobalDeg + ankleBaseRot + currentLocal;
+  const diff1 = Math.abs(normalizeAngleDeg(acos1 - currentWorldAngle));
+  const diff2 = Math.abs(normalizeAngleDeg(acos2 - currentWorldAngle));
+  const targetWorldAngle = diff1 <= diff2 ? acos1 : acos2;
+
+  let targetLocal = normalizeAngleDeg(targetWorldAngle - calfGlobalDeg - ankleBaseRot);
+  const limits = JOINT_LIMITS[ankleKey];
+  if (limits) {
+    targetLocal = Math.max(limits.min, Math.min(limits.max, targetLocal));
+  }
+
+  const t = Math.max(0, 1 - groundProximity / (ANATOMY.FOOT * 1.5));
+  const blendedLocal = lerp(currentLocal, targetLocal, t);
+
+  const newPose = { ...pose };
+  (newPose as any)[ankleKey] = blendedLocal;
+  return newPose;
+};
+
+export const applyHandModeBias = (
+  pose: Pose,
+  isRight: boolean,
+  mode: HandMode,
+  activePins: AnchorName[]
+): Pose => {
+  if (mode === 'neutral') return pose;
+
+  const wristKey = isRight ? 'rWrist' : 'lWrist';
+  const forearmKey = isRight ? 'rForearm' : 'lForearm';
+  const elbowPart = isRight ? PartName.RElbow : PartName.LElbow;
+  const wristPart = isRight ? PartName.RWrist : PartName.LWrist;
+
+  const joints = getJointPositions(pose, activePins);
+  const elbowPos = joints[elbowPart];
+  const wristPos = joints[wristPart];
+  if (!elbowPos || !wristPos) return pose;
+
+  const forearmWorldAngle = deg(Math.atan2(elbowPos.x - wristPos.x, wristPos.y - elbowPos.y));
+  const horizontalFactor = Math.abs(Math.sin(rad(forearmWorldAngle)));
+  const baseDroop = mode === 'passive' ? 18 : 38;
+  const adjustedDroop = baseDroop * (0.35 + 0.65 * horizontalFactor);
+
+  const newPose = { ...pose };
+  const currentWrist = (newPose as any)[wristKey] || 0;
+  let newWrist = currentWrist + adjustedDroop;
+  const wristLimits = JOINT_LIMITS[wristKey];
+  if (wristLimits) {
+    newWrist = Math.max(wristLimits.min, Math.min(wristLimits.max, newWrist));
+  }
+  (newPose as any)[wristKey] = newWrist;
+
+  if (mode === 'heavy') {
+    const currentForearm = (newPose as any)[forearmKey] || 0;
+    const sag = 12 * horizontalFactor;
+    let newForearm = currentForearm + sag;
+    const forearmLimits = JOINT_LIMITS[forearmKey];
+    if (forearmLimits) {
+      newForearm = Math.max(forearmLimits.min, Math.min(forearmLimits.max, newForearm));
+    }
+    (newPose as any)[forearmKey] = newForearm;
+  }
+
+  return newPose;
+};
+
+export const solveHulaWaist = (
+  basePose: Pose,
+  dx: number,
+  dy: number,
+  activePins: AnchorName[],
+  facingMode: FacingMode
+): Pose => {
+  const lateralScale = 0.45;
+  const swayScale = 0.028;
+  const crouchScale = 0.45;
+  const torsoCounter = 0.5;
+  const armCounter = 0.7;
+
+  const waistSway = Math.max(-42, Math.min(42, dx * swayScale));
+  const torsoChange = -waistSway * torsoCounter;
+
+  let nextPose: Pose = {
+    ...basePose,
+    root: {
+      x: basePose.root.x + dx * lateralScale,
+      y: basePose.root.y + dy * crouchScale,
+    },
+    waist: (basePose.waist || 0) + waistSway,
+    torso: (basePose.torso || 0) + torsoChange,
+  };
+
+  const baseJoints = getJointPositions(basePose, activePins);
+  const legPins: Array<{ pin: AnchorName; limb: 'lLeg' | 'rLeg'; effector: PartName }> = [
+    { pin: PartName.LAnkle, limb: 'lLeg', effector: PartName.LAnkle },
+    { pin: PartName.RAnkle, limb: 'rLeg', effector: PartName.RAnkle },
+    { pin: 'lFootTip', limb: 'lLeg', effector: PartName.LAnkle },
+    { pin: 'rFootTip', limb: 'rLeg', effector: PartName.RAnkle },
+  ];
+
+  for (const { pin, limb, effector } of legPins) {
+    if (!activePins.includes(pin)) continue;
+    const target = baseJoints[pin as string];
+    if (!target) continue;
+    nextPose = solveFABRIK(nextPose, limb, effector, target, [], facingMode);
+    nextPose = solveGroundAwareAnkle(nextPose, limb === 'rLeg', [], target.y + 1);
+  }
+
+  const netSpine = waistSway + torsoChange;
+  const armAdjust = -netSpine * armCounter;
+  nextPose = {
+    ...nextPose,
+    lShoulder: (basePose.lShoulder || 0) + armAdjust,
+    rShoulder: (basePose.rShoulder || 0) + armAdjust,
+  };
 
   return nextPose;
 };
@@ -734,8 +1124,8 @@ export const solveAdvancedIK = (
   target: Vector2D,
   activePins: AnchorName[]
 ): Pose => {
-  const coarsePose = solveFABRIK(pose, limbName, effectorPart, target, activePins, 12, 1);
-  return solveFABRIK(coarsePose, limbName, effectorPart, target, activePins, 24, 0.5);
+  const coarsePose = solveFABRIK(pose, limbName, effectorPart, target, activePins, 'front', 12, 1);
+  return solveFABRIK(coarsePose, limbName, effectorPart, target, activePins, 'front', 24, 0.5);
 };
 
 /**
