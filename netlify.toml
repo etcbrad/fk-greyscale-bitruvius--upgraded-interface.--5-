@@ -9,3 +9,4 @@
 
 [context.production.environment]
   NODE_ENV = "production"
+  NPM_FLAGS = "--include=dev"
