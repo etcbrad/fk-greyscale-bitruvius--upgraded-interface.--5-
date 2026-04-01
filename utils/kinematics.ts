@@ -438,24 +438,22 @@ const solveArmElbowGuide = (
   const resolvedShoulder = updatedJoints[shoulderPart];
   if (!resolvedShoulder) return pose;
   const resolvedElbow = projectPointToCircle(resolvedShoulder, ANATOMY.UPPER_ARM, refinedTarget);
-  const newWrist = projectPointToCircle(resolvedElbow, ANATOMY.LOWER_ARM, originalWrist);
+
+  // Preserve forearm angle when elbow is manipulated in IK (like holding a glass),
+  // only shoulder is adjusted to keep balance. Elbow motion is small and stability-focused.
+  const currentForearmLocal = (pose as any)[forearmKey] || 0;
+  let forearmLocal = currentForearmLocal;
+  const forearmLimits = JOINT_LIMITS[forearmKey];
+  if (forearmLimits) {
+    forearmLocal = Math.max(forearmLimits.min, Math.min(forearmLimits.max, forearmLocal));
+  }
+  (nextPose as any)[forearmKey] = forearmLocal;
 
   const elbowParentAngle =
     getFabrikParentAngle(nextPose, limbName) +
     shoulderBaseRotation +
     shoulderLocal;
   const forearmBaseRotation = BASE_ROTATIONS[forearmKey as keyof typeof BASE_ROTATIONS] || 0;
-  const forearmGlobal = deg(Math.atan2(newWrist.y - resolvedElbow.y, newWrist.x - resolvedElbow.x)) - 90;
-  const currentForearmLocal = (pose as any)[forearmKey] || 0;
-  let forearmLocal = getClosestEquivalentAngleDeg(
-    forearmGlobal - elbowParentAngle - forearmBaseRotation,
-    currentForearmLocal
-  );
-  const forearmLimits = JOINT_LIMITS[forearmKey];
-  if (forearmLimits) {
-    forearmLocal = Math.max(forearmLimits.min, Math.min(forearmLimits.max, forearmLocal));
-  }
-  (nextPose as any)[forearmKey] = forearmLocal;
 
   const originalHandGlobal = deg(Math.atan2(originalHandTip.y - originalWrist.y, originalHandTip.x - originalWrist.x)) - 90;
   const wristParentAngle = elbowParentAngle + forearmBaseRotation + forearmLocal;
