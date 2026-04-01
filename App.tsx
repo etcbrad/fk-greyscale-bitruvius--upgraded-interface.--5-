@@ -2407,29 +2407,15 @@ const App: React.FC = () => {
         <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-1">
           <span className="text-[8px] text-white/40 uppercase">System_Status</span>
           <div className="flex items-center gap-2 bg-black/40 px-2 py-1 border border-white/10 rounded">
-            <div className={`w-1.5 h-1.5 rounded-full ${appMode === 'orlok' ? 'bg-accent-red animate-pulse' : isIkMode(kinematicMode) ? 'bg-accent-purple animate-pulse' : 'bg-accent-green'}`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${isIkMode(kinematicMode) ? 'bg-accent-purple animate-pulse' : 'bg-accent-green'}`} />
             <span className="text-[9px] font-bold text-white/70 tracking-widest">
-              {appMode === 'orlok' ? 'ORLOK CHALLENGE' : isIkMode(kinematicMode) ? `${getKinematicModeLabel(kinematicMode)} READY` : 'FK READY'}
+              {isIkMode(kinematicMode) ? `${getKinematicModeLabel(kinematicMode)} READY` : 'FK READY'}
             </span>
           </div>
         </div>
 
         {/* Top Right: Consolidated Controls */}
         <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 bg-black/20 backdrop-blur-sm p-1 border border-white/10 rounded-full">
-          <button
-            onClick={toggleAppMode}
-            className={`px-3 py-2 rounded-full border transition-all duration-300 flex items-center gap-2 ${
-              appMode === 'orlok'
-                ? 'bg-accent-red/20 border-accent-red/40 text-white hover:bg-accent-red/30'
-                : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
-            }`}
-            aria-label={appMode === 'orlok' ? 'Posyng Puppyt' : 'Book of Orlok'}
-          >
-            <span className="text-[10px] font-bold tracking-tighter">{appMode === 'orlok' ? 'POSYNG PUPPYT' : 'BOOK OF ORLOK'}</span>
-          </button>
-
-          {appMode === 'poser' && (
-            <>
           {/* Kinematic Mode Toggle */}
           <button
             onClick={cycleKinematicMode}
@@ -2508,8 +2494,6 @@ const App: React.FC = () => {
               <path d="M17.243 14.757l-.37-.37c-.63.63-1.39 1.05-2.22 1.25l-.23.95a.996.996 0 01-1.22.75l-2-.5a.996.996 0 01-.75-1.22l.23-.95c-.83-.2-1.59-.62-2.22-1.25l-.37.37a.997.997 0 01-1.41 0l-.707-.707a.997.997 0 010-1.414l.37-.37c-.63-.63-1.05-1.39-1.25-2.22l-.95-.23a.996.996 0 01-.75-1.22l.5-2a.996.996 0 011.22-.75l.95.23c.2-.83.62-1.59 1.25-2.22l-.37-.37a.997.997 0 010-1.414l.707-.707a.997.997 0 011.414 0l.37.37c.63-.63 1.39-1.05 2.22-1.25l.23-.95a.996.996 0 011.22-.75l2 .5a.996.996 0 01.75 1.22l-.23.95c.83.2 1.59.62 2.22 1.25l.37-.37a.997.997 0 011.414 0l.707.707a.997.997 0 010 1.414l-.37.37c.63.63 1.05 1.39 1.25 2.22l.95.23a.996.996 0 01.75 1.22l-.5 2a.996.996 0 01-1.22.75l-.95-.23c-.2.83-.62 1.59-1.25-2.22l.37.37a.997.997 0 010 1.414l-.707.707a.997.997 0 01-1.414 0zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" fillRule="evenodd"></path>
             </svg>
           </button>
-            </>
-          )}
         </div>
 
         {/* MODEL SETTINGS (New Master Draggable Panel) */}
