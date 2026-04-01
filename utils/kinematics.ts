@@ -449,11 +449,19 @@ const solveArmElbowGuide = (
   }
   (nextPose as any)[forearmKey] = forearmLocal;
 
+  // Recalculate wrist position: elbow moved, but forearm angle is preserved
   const elbowParentAngle =
     getFabrikParentAngle(nextPose, limbName) +
     shoulderBaseRotation +
     shoulderLocal;
   const forearmBaseRotation = BASE_ROTATIONS[forearmKey as keyof typeof BASE_ROTATIONS] || 0;
+  const forearmGlobalAngle = elbowParentAngle + forearmBaseRotation + forearmLocal;
+  
+  // Position wrist at LOWER_ARM distance from resolved elbow, at the preserved global forearm angle
+  const calculatedWrist = {
+    x: resolvedElbow.x + rotateVec(0, ANATOMY.LOWER_ARM, forearmGlobalAngle).x,
+    y: resolvedElbow.y + rotateVec(0, ANATOMY.LOWER_ARM, forearmGlobalAngle).y,
+  };
 
   const originalHandGlobal = deg(Math.atan2(originalHandTip.y - originalWrist.y, originalHandTip.x - originalWrist.x)) - 90;
   const wristParentAngle = elbowParentAngle + forearmBaseRotation + forearmLocal;
