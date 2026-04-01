@@ -777,6 +777,83 @@ const applyWholeBodyCompensation = (
   return nextPose;
 };
 
+const solveKneelPosture = (
+  pose: Pose,
+  originalPose: Pose,
+  mode: KinematicMode,
+  limbName: 'rLeg' | 'lLeg',
+  kneePart: PartName.RSkin | PartName.LSkin,
+  kneeTarget: Vector2D,
+  activePins: AnchorName[],
+  facingMode: FacingMode
+): Pose => {
+  const nextPose = { ...pose };
+  const joints = getJointPositions(nextPose, activePins);
+  const kneePos = joints[kneePart];
+  if (!kneePos) return pose;
+
+  const drop = Math.max(0, kneeTarget.y - kneePos.y);
+  if (drop < ANATOMY.FOOT * 0.18) return pose;
+
+  const gravityStrength = mode === 'fullBody' ? 1 : mode === 'reactive' ? 0.65 : 0.35;
+  const side = limbName === 'rLeg' ? 1 : -1;
+  const normalizedDrop = Math.min(1, drop / (ANATOMY.LEG_LOWER * 0.9));
+
+  nextPose.root = {
+    x: nextPose.root.x + (kneeTarget.x - kneePos.x) * 0.12 * gravityStrength,
+    y: nextPose.root.y + drop * 0.34 * gravityStrength,
+  };
+  applyDeltaToPoseKey(nextPose, 'waist', side * 12 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, 'torso', -side * 8 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'rHipGirdle' : 'lHipGirdle', side * 5 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'rThigh' : 'lThigh', 10 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'rCalf' : 'lCalf', 18 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'lThigh' : 'rThigh', -6 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'lCalf' : 'rCalf', 10 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'lShoulder' : 'rShoulder', -10 * normalizedDrop * gravityStrength);
+  applyDeltaToPoseKey(nextPose, limbName === 'rLeg' ? 'rShoulder' : 'lShoulder', 6 * normalizedDrop * gravityStrength);
+
+  let solvedPose = solveFABRIK(nextPose, limbName, kneePart, kneeTarget, activePins, facingMode, 24, 0.35);
+
+  const supportLeg = limbName === 'rLeg' ? 'lLeg' : 'rLeg';
+  const supportAnkleTarget = getJointPositions(originalPose, activePins)[supportLeg === 'rLeg' ? PartName.RAnkle : PartName.LAnkle];
+  if (supportAnkleTarget && mode !== 'fabrik') {
+    solvedPose = solveFABRIK(
+      solvedPose,
+      supportLeg,
+      supportLeg === 'rLeg' ? PartName.RAnkle : PartName.LAnkle,
+      supportAnkleTarget,
+      [],
+      facingMode,
+      mode === 'fullBody' ? 18 : 12,
+      0.5
+    );
+  }
+
+  if (mode === 'fullBody') {
+    const oppositeKnee = limbName === 'rLeg' ? PartName.LSkin : PartName.RSkin;
+    const oppositeKneePos = getJointPositions(solvedPose, activePins)[oppositeKnee];
+    if (oppositeKneePos && kneeTarget.y - oppositeKneePos.y > ANATOMY.FOOT * 0.3) {
+      const settleTarget = {
+        x: oppositeKneePos.x + (kneeTarget.x - oppositeKneePos.x) * 0.25,
+        y: oppositeKneePos.y + (kneeTarget.y - oppositeKneePos.y) * 0.45,
+      };
+      solvedPose = solveFABRIK(
+        solvedPose,
+        supportLeg,
+        oppositeKnee,
+        settleTarget,
+        [],
+        facingMode,
+        18,
+        0.45
+      );
+    }
+  }
+
+  return solvedPose;
+};
+
 export const solvePoseWithIKMode = (
   pose: Pose,
   mode: KinematicMode,
@@ -787,6 +864,21 @@ export const solvePoseWithIKMode = (
   facingMode: FacingMode,
   handModes: { left: HandMode; right: HandMode }
 ): Pose => {
+  if ((effectorPart === PartName.RSkin || effectorPart === PartName.LSkin) && mode !== 'fk') {
+    let kneelPose = solveKneelPosture(
+      pose,
+      pose,
+      mode,
+      limbName as 'rLeg' | 'lLeg',
+      effectorPart as PartName.RSkin | PartName.LSkin,
+      target,
+      activePins,
+      facingMode
+    );
+    kneelPose = preservePinnedAnchors(kneelPose, pose, activePins, limbName, facingMode, mode === 'fullBody' ? 2 : 1);
+    return kneelPose;
+  }
+
   let solvedPose =
     mode === 'fullBody'
       ? solveFABRIK(pose, limbName, effectorPart, target, activePins, facingMode, 24, 0.35)

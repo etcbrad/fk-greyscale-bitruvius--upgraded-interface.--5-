@@ -181,6 +181,107 @@ export type TimelineState = {
   playbackTime: number;
 };
 
+export type SubdivisionSuggestionType = 'autoPinFeet' | 'torsoWidthMorph' | 'armGravityHint';
+
+export type SubdivisionSuggestion = {
+  id: string;
+  type: SubdivisionSuggestionType;
+  label: string;
+  description: string;
+  active: boolean;
+  applied: boolean;
+};
+
+export type SubdivisionInterval = {
+  startProgress: number;
+  endProgress: number;
+};
+
+export type SubdivisionNode = {
+  id: string;
+  progress: number;
+  pose: Pose;
+  label: string;
+  suggestions: SubdivisionSuggestion[];
+};
+
+export type SubdivisionGhostNode = {
+  interval: SubdivisionInterval;
+  progress: number;
+  pose: Pose;
+  suggestions: SubdivisionSuggestion[];
+  label: string;
+  editing: boolean;
+};
+
+export type SubdivisionTimelineState = {
+  startPose: Pose | null;
+  endPose: Pose | null;
+  nodes: SubdivisionNode[];
+  selectedProgress: number | null;
+  selectedInterval: SubdivisionInterval | null;
+  ghost: SubdivisionGhostNode | null;
+};
+
+export type BackgroundMediaSource =
+  | {
+      type: 'image';
+      src: string;
+    }
+  | {
+      type: 'video';
+      src: string;
+      name: string;
+    };
+
+export type BackgroundSegmentMode = 'hold' | 'play' | 'interpolate' | 'ease';
+
+export type BackgroundKeyframe = {
+  id: string;
+  name: string;
+  projectTime: number;
+  sourceTimeMs: number;
+  active: boolean;
+  segmentMode: BackgroundSegmentMode;
+};
+
+export type BackgroundTimelineState = {
+  keyframes: BackgroundKeyframe[];
+  selectedKeyframeId: string | null;
+};
+
+export type AppMode = 'poser' | 'orlok';
+
+export type OrlokPhase = 'dormant' | 'lidOpened' | 'beat30' | 'beat15' | 'beat45' | 'apex';
+
+export type OrlokBeatId = 'beat30' | 'beat15' | 'beat45';
+
+export type OrlokBeat = {
+  id: OrlokBeatId;
+  label: string;
+  progress: number;
+  prompt: string;
+  editableParts: PartName[];
+  adjusted: boolean;
+};
+
+export type OrlokChecklist = {
+  lidOpened: boolean;
+  riseStarted: boolean;
+  midpointEdited: boolean;
+  apexReached: boolean;
+  widthExpanded: boolean;
+};
+
+export type OrlokState = {
+  phase: OrlokPhase;
+  lidAngle: number;
+  riseProgress: number;
+  activeBeatId: OrlokBeatId | null;
+  beats: OrlokBeat[];
+  checklist: OrlokChecklist;
+};
+
 export type SavedPose = {
   id: string;
   name: string;

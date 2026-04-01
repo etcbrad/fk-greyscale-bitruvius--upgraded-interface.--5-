@@ -2,7 +2,7 @@
 import React from 'react';
 import { Bone, type BoneProps } from './Bone'; // Import BoneProps type for explicit casting
 import { ANATOMY, JOINT_LIMITS } from '../constants';
-import { getJointPositions, getTotalRotation, calculateTensionFactor } from '../utils/kinematics';
+import { getJointPositions, getTotalRotation } from '../utils/kinematics';
 import { PartName, PartSelection, PartVisibility, AnchorName, Pose, RenderMode, PinnedState, FacingMode } from '../types';
 import { COLORS } from './Bone';
 
@@ -14,13 +14,14 @@ interface MannequinProps {
   activePins: AnchorName[];
   pinnedState: PinnedState;
   className?: string;
-  onMouseDownOnPart?: (part: PartName, event: React.MouseEvent<SVGElement>) => void;
-  onMouseDownOnRoot?: (event: React.MouseEvent<SVGCircleElement>) => void;
-  onMouseDownOnTriangle?: (event: React.MouseEvent<SVGPolygonElement>) => void;
-  onMouseDownOnVJoint?: (event: React.MouseEvent<SVGCircleElement>) => void;
-  onMouseDownOnHeadHandle?: (event: React.MouseEvent<SVGElement>) => void;
-  onMouseDownOnChinHandle?: (event: React.MouseEvent<SVGElement>) => void;
-  onMouseDownOnNoseHandle?: (event: React.MouseEvent<SVGElement>) => void;
+  onPointerDownOnPart?: (part: PartName, event: React.PointerEvent<SVGElement>) => void;
+  onPointerDownOnRoot?: (event: React.PointerEvent<SVGGElement>) => void;
+  onPointerDownOnTriangle?: (event: React.PointerEvent<SVGPolygonElement>) => void;
+  onPointerDownOnVJoint?: (event: React.PointerEvent<SVGCircleElement>) => void;
+  onPointerDownOnHeadHandle?: (event: React.PointerEvent<SVGElement>) => void;
+  onPointerDownOnChinHandle?: (event: React.PointerEvent<SVGElement>) => void;
+  onPointerDownOnNoseHandle?: (event: React.PointerEvent<SVGElement>) => void;
+  onPointerDownOnPinAnchor?: (pinName: AnchorName, event: React.PointerEvent<SVGGElement>) => void;
   faceControlState?: {
     isReactiveEnabled: boolean;
     rotation?: number;
@@ -35,6 +36,8 @@ interface MannequinProps {
   backView?: boolean;
   showFabrikHandles?: boolean;
   renderMode?: RenderMode;
+  torsoWidthScale?: number;
+  waistWidthScale?: number;
 }
 
 export const getPartCategory = (part: PartName): string => { // Exported
@@ -95,13 +98,14 @@ export const Mannequin: React.FC<MannequinProps> = ({
   activePins,
   pinnedState,
   className = "text-ink",
-  onMouseDownOnPart,
-  onMouseDownOnRoot,
-  onMouseDownOnTriangle,
-  onMouseDownOnVJoint,
-  onMouseDownOnHeadHandle,
-  onMouseDownOnChinHandle,
-  onMouseDownOnNoseHandle,
+  onPointerDownOnPart,
+  onPointerDownOnRoot,
+  onPointerDownOnTriangle,
+  onPointerDownOnVJoint,
+  onPointerDownOnHeadHandle,
+  onPointerDownOnChinHandle,
+  onPointerDownOnNoseHandle,
+  onPointerDownOnPinAnchor,
   faceControlState,
   torsoShellMode = 'oscillating',
   shellPoseMode = 'front',
@@ -109,6 +113,8 @@ export const Mannequin: React.FC<MannequinProps> = ({
   backView = false,
   showFabrikHandles = false,
   renderMode = 'default',
+  torsoWidthScale = 1,
+  waistWidthScale = 1,
 }) => {
   const joints = getJointPositions(pose, activePins);
   const offsets = pose.offsets || {};
@@ -148,16 +154,16 @@ export const Mannequin: React.FC<MannequinProps> = ({
   }) => {
     const isSelected = selectedParts[part];
 
-    const handleMouseDown = (e: React.MouseEvent<SVGGElement>) => { 
+    const handlePointerDown = (e: React.PointerEvent<SVGGElement>) => {
       if (isGhost || !interactive) return;
-      e.stopPropagation(); 
-      onMouseDownOnPart?.(part, e); 
+      e.stopPropagation();
+      onPointerDownOnPart?.(part, e);
     };
 
     return (
       <g 
         className={isGhost ? "pointer-events-none opacity-20" : interactive ? "cursor-pointer" : "pointer-events-none"}
-        onMouseDown={interactive ? handleMouseDown : undefined}
+        onPointerDown={interactive ? handlePointerDown : undefined}
         role={isGhost || !interactive ? "presentation" : "button"} 
         aria-label={isGhost || !interactive ? undefined : `Select ${getPartCategoryDisplayName(part)}`}
         aria-pressed={isGhost || !interactive ? undefined : isSelected}
@@ -244,7 +250,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
     const shoulderSpan = Math.max(
       projectToAxis(vLS, j.root, rightDir),
       projectToAxis(vRS, j.root, rightDir),
-      ANATOMY.TORSO_WIDTH * 0.22
+      ANATOMY.TORSO_WIDTH * 0.22 * torsoWidthScale
     );
     const hipSpan = Math.max(
       projectToAxis(j[PartName.LThigh], j.root, hipRightDir),
@@ -252,7 +258,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
       ANATOMY.HIP_WIDTH * 0.35
     );
     const waistHalfWidth = Math.max(
-      ANATOMY.WAIST_WIDTH * 0.42,
+      ANATOMY.WAIST_WIDTH * 0.42 * waistWidthScale,
       Math.min(shoulderSpan, hipSpan) * 0.72
     );
     const vLW = { x: j.root.x - hipRightDir.x * waistHalfWidth, y: j.root.y - hipRightDir.y * waistHalfWidth };
@@ -280,7 +286,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
           cx={vPos.x} cy={vPos.y} r={10} 
           fill={COLORS.ANCHOR_RED} 
           className="cursor-move pointer-events-auto"
-          onMouseDown={onMouseDownOnVJoint}
+          onPointerDown={onPointerDownOnVJoint}
         />
         
         {/* Neck Bone */}
@@ -435,7 +441,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
       const partWrist = isRight ? PartName.RWrist : PartName.LWrist;
       const girdleAngle = getGirdleAngle(isRight);
       const parentAngle = getTotalRotation(PartName.Torso, p);
-      const torsoShellWidth = ANATOMY.TORSO_WIDTH * 0.38 * shellProfile.widthScale;
+      const torsoShellWidth = ANATOMY.TORSO_WIDTH * 0.38 * shellProfile.widthScale * torsoWidthScale;
       const shoulderEdgeOffsetX = isRight ? torsoShellWidth / 2 : -torsoShellWidth / 2;
       const shellRotation = getShellRotation(isRight, getTotalRotation(partGirdle, p));
 
@@ -508,7 +514,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
       const partToe = isRight ? PartName.RToe : PartName.LToe;
       const girdleAngle = getHipGirdleAngle(isRight);
       const parentAngle = getTotalRotation(PartName.Waist, p);
-      const waistShellWidth = ANATOMY.WAIST_WIDTH * 0.38 * shellProfile.widthScale;
+      const waistShellWidth = ANATOMY.WAIST_WIDTH * 0.38 * shellProfile.widthScale * waistWidthScale;
       const hipShellLength = ANATOMY.WAIST;
       const shellRotation = getShellRotation(isRight, getTotalRotation(partGirdle, p));
 
@@ -590,7 +596,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
           <Bone 
             rotation={getTotalRotation(PartName.Torso, p)} 
             length={ANATOMY.TORSO} 
-            width={ANATOMY.TORSO_WIDTH * 0.38 * shellProfile.widthScale} 
+            width={ANATOMY.TORSO_WIDTH * 0.38 * shellProfile.widthScale * torsoWidthScale} 
             variant="thin-triangle" 
             drawsUpwards 
             showOverlay={showOverlay} 
@@ -635,7 +641,7 @@ export const Mannequin: React.FC<MannequinProps> = ({
           <Bone 
             rotation={getTotalRotation(PartName.Waist, p)} 
             length={ANATOMY.WAIST} 
-            width={ANATOMY.WAIST_WIDTH * 0.38 * shellProfile.widthScale} 
+            width={ANATOMY.WAIST_WIDTH * 0.38 * shellProfile.widthScale * waistWidthScale} 
             variant="thin-triangle" 
             drawsUpwards={false} 
             showOverlay={showOverlay} 
@@ -724,9 +730,9 @@ export const Mannequin: React.FC<MannequinProps> = ({
               role="button"
               aria-label={`FABRIK handle ${getPartCategoryDisplayName(part)}`}
               aria-pressed={isSelected}
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation();
-                onMouseDownOnPart?.(part, e);
+                onPointerDownOnPart?.(part, e);
               }}
             >
               <circle cx="0" cy="0" r={ANATOMY.ROOT_SIZE * 1.4} fill="transparent" />
@@ -745,6 +751,42 @@ export const Mannequin: React.FC<MannequinProps> = ({
       </g>
     );
   };
+
+  const renderPinnedAnchors = () => (
+    <g data-no-export={true}>
+      {activePins.slice(0, 1).map((pinName) => {
+        if (pinName === 'root') return null;
+        const targetPos = pinnedState[pinName] || joints[pinName as keyof typeof joints];
+        const currentPos = joints[pinName as keyof typeof joints];
+        if (!targetPos || !currentPos) return null;
+
+        return (
+          <g
+            key={pinName}
+            transform={`translate(${targetPos.x}, ${targetPos.y})`}
+            className="cursor-move"
+            role="button"
+            aria-label={`Pinned anchor ${pinName}`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onPointerDownOnPinAnchor?.(pinName, e);
+            }}
+          >
+            <circle cx="0" cy="0" r={ANATOMY.ROOT_SIZE * 1.7} fill="transparent" />
+            <circle
+              cx="0"
+              cy="0"
+              r={ANATOMY.ROOT_SIZE * 0.78}
+              fill="#007AFF"
+              stroke="white"
+              strokeWidth={2}
+              opacity={0.98}
+            />
+          </g>
+        );
+      })}
+    </g>
+  );
 
   const renderGirdleHalos = () => {
     const haloParts = [
@@ -766,9 +808,9 @@ export const Mannequin: React.FC<MannequinProps> = ({
               role="button"
               aria-label={`Activate ${getPartCategoryDisplayName(part)}`}
               aria-pressed={selectedParts[part]}
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation();
-                onMouseDownOnPart?.(part, e);
+                onPointerDownOnPart?.(part, e);
               }}
             >
               <circle cx="0" cy="0" r={GIRDLE_HALO_RADIUS} fill="transparent" />
@@ -792,9 +834,9 @@ export const Mannequin: React.FC<MannequinProps> = ({
         aria-label="Head crown handle"
         aria-pressed={isSelected}
         data-no-export={true}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
-          onMouseDownOnHeadHandle?.(e);
+          onPointerDownOnHeadHandle?.(e);
         }}
       >
         <circle cx="0" cy="0" r={ANATOMY.ROOT_SIZE * 1.5} fill="transparent" />
@@ -824,9 +866,9 @@ export const Mannequin: React.FC<MannequinProps> = ({
         aria-label="Chin handle"
         aria-pressed={isSelected}
         data-no-export={true}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
-          onMouseDownOnChinHandle?.(e);
+          onPointerDownOnChinHandle?.(e);
         }}
       >
         <circle cx="0" cy="0" r={ANATOMY.ROOT_SIZE * 1.35} fill="transparent" />
@@ -865,9 +907,9 @@ export const Mannequin: React.FC<MannequinProps> = ({
         aria-label="Nose handle"
         aria-pressed={isSelected}
         data-no-export={true}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
-          onMouseDownOnNoseHandle?.(e);
+          onPointerDownOnNoseHandle?.(e);
         }}
       >
         <circle cx="0" cy="0" r={ANATOMY.ROOT_SIZE * 1.3} fill="transparent" />
@@ -894,10 +936,11 @@ export const Mannequin: React.FC<MannequinProps> = ({
       {renderChinHandle()}
       {renderHeadHandle()}
       {renderFabrikHandles()}
+      {renderPinnedAnchors()}
 
       {/* Root circle for drag (Always on top of main skeleton) */}
       <g 
-        onMouseDown={onMouseDownOnRoot} 
+        onPointerDown={onPointerDownOnRoot}
         className={'cursor-pointer'} 
         transform={`translate(${joints.root.x}, ${joints.root.y}) rotate(${pose.bodyRotation})`}
         data-no-export={true}
@@ -911,64 +954,6 @@ export const Mannequin: React.FC<MannequinProps> = ({
           stroke={PIN_INDICATOR_STROKE_COLOR} 
           strokeWidth={PIN_INDICATOR_STROKE_WIDTH} 
         />
-      </g>
-
-      {/* Multi-Pin Indicators with Tension Visualization */}
-      <g transform={`translate(${joints.root.x}, ${joints.root.y}) rotate(${pose.bodyRotation})`}>
-        {activePins.map((pinName, index) => {
-          if (pinName === 'root') return null;
-          const currentPos = joints[pinName as keyof typeof joints];
-          const targetPos = pinnedState[pinName];
-          if (!currentPos || !targetPos) return null;
-
-          const tension = calculateTensionFactor(currentPos, targetPos);
-          const isPrimary = index === 0;
-          
-          // Tension visual: Scale and luminance
-          const scale = 1 + tension * 0.5;
-          const opacity = 0.5 + tension * 0.5;
-          const color = isPrimary ? COLORS.ANCHOR_RED : "#FF4488"; // Pinkish-red for secondary pins
-
-          return (
-            <g 
-              key={pinName}
-              transform={`translate(${currentPos.x - joints.root.x}, ${currentPos.y - joints.root.y})`} 
-              data-no-export={true}
-            >
-              {/* Rubber band line if tension exists */}
-              {tension > 0.05 && (
-                <line 
-                  x1={0} y1={0} 
-                  x2={targetPos.x - currentPos.x} 
-                  y2={targetPos.y - currentPos.y}
-                  stroke={color}
-                  strokeWidth={2}
-                  strokeDasharray="2,2"
-                  opacity={opacity}
-                />
-              )}
-              
-              {/* Target pin (ghost) */}
-              <circle 
-                cx={targetPos.x - currentPos.x} 
-                cy={targetPos.y - currentPos.y} 
-                r={PIN_INDICATOR_SIZE * 0.5} 
-                fill={color} 
-                opacity={0.3} 
-              />
-
-              {/* Active joint pin */}
-              <circle cx="0" cy="0" r={ANATOMY.ROOT_SIZE} fill="currentColor" opacity="0.1" />
-              <circle 
-                cx="0" cy="0" r={PIN_INDICATOR_SIZE * scale} 
-                fill={color}
-                stroke={PIN_INDICATOR_STROKE_COLOR} 
-                strokeWidth={PIN_INDICATOR_STROKE_WIDTH}
-                opacity={opacity}
-              />
-            </g>
-          );
-        })}
       </g>
     </g>
   );

@@ -33,13 +33,8 @@ export const SmartFace: React.FC<SmartFaceProps> = ({
 }) => {
   const eyeSpread = size * 0.22;
   const eyeY = -size * 0.14;
-  const eyeWidth = size * 0.3;
-  const eyeHeight = size * (0.2 - clamp(squint, 0, 1) * 0.05);
-  const pupilRadius = size * 0.028;
-  const pupilOffsetX = clamp(lookX, -1, 1) * size * 0.03;
-  const pupilOffsetY = clamp(lookY, -1, 1) * size * 0.025;
-  const browLift = clamp(-lookY, -1, 1) * size * 0.025;
-  const browDelta = clamp(browTilt, -1, 1) * size * 0.03;
+  const eyeWidth = size * 0.25;
+  const eyeHeight = eyeWidth * 0.697 * (1 - clamp(squint, 0, 1) * 0.08);
   const noseWidth = size * 0.22;
   const noseHeight = size * 0.34;
   const noseY = size * 0.04;
@@ -67,44 +62,23 @@ export const SmartFace: React.FC<SmartFaceProps> = ({
 
   return (
     <g transform={`translate(${x + offsetX}, ${y + offsetY}) rotate(${rotation})`}>
-      <path
-        d={`M ${leftEyeX - eyeWidth} ${eyeY - eyeHeight - browLift}
-            Q ${leftEyeX} ${eyeY - eyeHeight * 2 - browLift + browDelta}
-            ${leftEyeX + eyeWidth} ${eyeY - eyeHeight - browLift}`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${rightEyeX - eyeWidth} ${eyeY - eyeHeight - browLift}
-            Q ${rightEyeX} ${eyeY - eyeHeight * 2 - browLift - browDelta}
-            ${rightEyeX + eyeWidth} ${eyeY - eyeHeight - browLift}`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-
       <image
         href="/eye.svg"
-        x={leftEyeX - eyeWidth}
+        x={leftEyeX - eyeWidth / 2}
         y={eyeY - eyeHeight}
-        width={eyeWidth * 2}
+        width={eyeWidth}
         height={eyeHeight * 2}
         preserveAspectRatio="xMidYMid meet"
       />
       <image
         href="/eye.svg"
-        x={rightEyeX - eyeWidth}
+        x={rightEyeX - eyeWidth / 2}
         y={eyeY - eyeHeight}
-        width={eyeWidth * 2}
+        width={eyeWidth}
         height={eyeHeight * 2}
         preserveAspectRatio="xMidYMid meet"
         transform={`translate(${rightEyeX * 2}, 0) scale(-1, 1)`}
       />
-      <circle cx={leftEyeX + pupilOffsetX} cy={eyeY + pupilOffsetY} r={pupilRadius} fill="currentColor" />
-      <circle cx={rightEyeX + pupilOffsetX} cy={eyeY + pupilOffsetY} r={pupilRadius} fill="currentColor" />
 
       <image
         href="/skull-nose.svg"

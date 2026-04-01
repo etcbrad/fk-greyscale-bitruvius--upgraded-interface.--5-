@@ -24,6 +24,7 @@ const scaleRoot = (rootString: string): string => {
 const originalPoses = [
   // Updated T-Pose data string for new T_POSE_ROOT_Y
   { "id": "B01", "cat": "Base", "name": "T-Pose", "src": "Bitruvius", "data": scaleRoot("r:0,600") + ";br:0;w:0;t:0;c:0;h:0;ls:-90;le:0;lw:0;rs:90;re:0;rw:0;lt:0;lc:0;la:0;rt:0;rc:0;ra:0" },
+  { "id": "B02", "cat": "Base", "name": "Death Pose", "src": "Bitruvius", "data": "r:-19.77,2498.36;br:2;w:-5.53;t:2.05;c:0.3;h:0.1;rs:101.5;re:155.08;rw:65.75;ls:-105.35;le:-149.93;lw:-80.42;rt:-17.99;rc:-0.01;ra:-56.12;lt:-4.88;lc:0.01;la:148.27" },
 ];
 
 // Poses identified as "left-leaning" for mirroring
