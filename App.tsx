@@ -58,6 +58,8 @@ interface StageSettings {
   backgroundImageOpacity: number;
   backgroundImageFit: 'cover';
   scanlinesEnabled: boolean;
+  cameraLocked: boolean;
+  mobileZoom: number;
 }
 
 const FACE_CONTROL_RESET: FaceControlState = {
@@ -80,6 +82,8 @@ const DEFAULT_STAGE_SETTINGS: StageSettings = {
   backgroundImageOpacity: 0.55,
   backgroundImageFit: 'cover',
   scanlinesEnabled: true,
+  cameraLocked: false,
+  mobileZoom: 2,
 };
 const TRIANGLE_GRID_BACKGROUND = `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3e%3cpath d='M12 0 L0 12 L12 24 L24 12 Z M0 0 L12 24 L24 0 Z' stroke='rgba(20, 20, 20, 0.1)' stroke-width='1' fill='none'/%3e%3c/svg%3e")`;
 const parseViewBoxValue = (value: string) => {
@@ -1477,6 +1481,8 @@ const App: React.FC = () => {
     return viewMode;
   }, [deviceMode, viewMode]);
 
+  const lastAutoViewBox = useRef<string>('0 0 2225 2212.5');
+
   // Dynamically calculate viewBox based on viewMode and windowSize
   const autoViewBox = useMemo(() => {
     const configs = {
@@ -1487,8 +1493,11 @@ const App: React.FC = () => {
     };
 
     if (effectiveViewMode === 'mobile') {
-      const screenAspectRatio = windowSize.innerWidth / windowSize.innerHeight;
+      if (stageSettings.cameraLocked && lastAutoViewBox.current) {
+        return lastAutoViewBox.current;
+      }
 
+      const screenAspectRatio = windowSize.innerWidth / windowSize.innerHeight;
       const shoulderSpan = ANATOMY.SHOULDER_WIDTH + (ANATOMY.UPPER_ARM + ANATOMY.LOWER_ARM + ANATOMY.HAND) * 2;
       const widthFillRatio = 0.88;
       const baseViewBoxWidth = shoulderSpan / widthFillRatio;
@@ -1500,23 +1509,29 @@ const App: React.FC = () => {
         ANATOMY.COLLAR +
         ANATOMY.TORSO
       ) - ANATOMY.WAIST * 0.1;
-      const topMargin = ANATOMY.HEAD * 0.38;
-      const viewBoxTop = headTopY - topMargin;
-      const groundPlaneBuffer = GROUND_STRIP_HEIGHT * 1.15;
-      const viewBoxBottom = FLOOR_HEIGHT + groundPlaneBuffer;
+      const bodyBottom = FLOOR_HEIGHT; // anchor the toe at the bottom of the screen
+      const bodyTop = headTopY - ANATOMY.HEAD * 0.12;
+      const bodyHeight = bodyBottom - bodyTop;
 
-      const bodyHeight = viewBoxBottom - viewBoxTop;
-      const viewBoxHeight = Math.max(bodyHeight, heightByWidth);
+      const zoom = stageSettings.mobileZoom || 2;
+      const targetHeight = Math.max(bodyHeight / zoom, heightByWidth);
+      const viewBoxHeight = Math.min(targetHeight, bodyHeight);
       const viewBoxWidth = viewBoxHeight * screenAspectRatio;
-      const viewBoxX = -viewBoxWidth / 2;
 
-      return `${viewBoxX} ${viewBoxTop} ${viewBoxWidth} ${viewBoxHeight}`;
+      const viewBoxX = -viewBoxWidth / 2;
+      const viewBoxY = bodyBottom - viewBoxHeight;
+      const viewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
+
+      lastAutoViewBox.current = viewBox;
+      return viewBox;
 
     } else {
       const c = configs[effectiveViewMode];
-      return `${c.x} ${c.y} ${c.w} ${c.h}`;
+      const viewBox = `${c.x} ${c.y} ${c.w} ${c.h}`;
+      lastAutoViewBox.current = viewBox;
+      return viewBox;
     }
-  }, [effectiveViewMode, windowSize.innerWidth, windowSize.innerHeight]);
+  }, [effectiveViewMode, windowSize.innerWidth, windowSize.innerHeight, stageSettings.cameraLocked, stageSettings.mobileZoom]);
 
   const joints = useMemo(() => getJointPositions(activePose, activePins), [activePose, activePins]);
   const crownToChinLength = useMemo(() => {
@@ -2853,6 +2868,31 @@ const App: React.FC = () => {
                   </label>
                 </div>
 
+                <span className="text-white/40 text-[8px] uppercase mt-2">Camera (phone)</span>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-[9px] uppercase text-white/80">
+                    <input
+                      type="checkbox"
+                      checked={stageSettings.cameraLocked}
+                      onChange={(e) => updateStageSetting('cameraLocked', e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    KEEP VIEWPORT OPEN/PIN CAMERA
+                  </label>
+                  <label className="text-[9px] uppercase text-white/80">
+                    MOBILE ZOOM: {stageSettings.mobileZoom.toFixed(1)}x
+                    <input
+                      type="range"
+                      min="1"
+                      max="3"
+                      step="0.1"
+                      value={stageSettings.mobileZoom}
+                      onChange={(e) => updateStageSetting('mobileZoom', Number(e.target.value))}
+                      className="w-full mt-1"
+                    />
+                  </label>
+                </div>
+
                 <span className="text-white/40 text-[8px] uppercase mt-2">Background_Image</span>
                 <div className="flex flex-col gap-1">
                   <label className="text-[9px] text-center px-2 py-1 border bg-white/5 border-white/10 text-white/70 hover:bg-white/10 transition-all cursor-pointer">
@@ -3711,7 +3751,9 @@ const App: React.FC = () => {
           {stageSettings.scanlinesEnabled && <Scanlines />}
           {showSplash && (
             <div className="absolute top-[8%] left-0 right-0 z-30 flex items-center justify-center pointer-events-none">
-              <h1 className="text-6xl font-archaic text-paper/80 animate-terminal-boot tracking-widest uppercase">BITRUVIUS</h1>
+              <h1 className="text-[clamp(2rem,8vw,4.2rem)] sm:text-[clamp(3rem,6vw,5rem)] font-archaic text-paper/80 animate-terminal-boot tracking-widest uppercase leading-tight">
+                BITRUVIUS
+              </h1>
             </div>
           )}
           {appMode === 'orlok' && (
