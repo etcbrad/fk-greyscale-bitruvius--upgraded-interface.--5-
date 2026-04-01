@@ -1491,8 +1491,8 @@ const App: React.FC = () => {
 
       const shoulderSpan = ANATOMY.SHOULDER_WIDTH + (ANATOMY.UPPER_ARM + ANATOMY.LOWER_ARM + ANATOMY.HAND) * 2;
       const widthFillRatio = 0.88;
-      const viewBoxWidth = shoulderSpan / widthFillRatio;
-      const viewBoxHeight = viewBoxWidth / screenAspectRatio;
+      const baseViewBoxWidth = shoulderSpan / widthFillRatio;
+      const heightByWidth = baseViewBoxWidth / screenAspectRatio;
 
       const headTopY = -(
         ANATOMY.HEAD +
@@ -1500,14 +1500,17 @@ const App: React.FC = () => {
         ANATOMY.COLLAR +
         ANATOMY.TORSO
       ) - ANATOMY.WAIST * 0.1;
+      const topMargin = ANATOMY.HEAD * 0.38;
+      const viewBoxTop = headTopY - topMargin;
       const groundPlaneBuffer = GROUND_STRIP_HEIGHT * 1.15;
-      const desiredViewBoxBottom = FLOOR_HEIGHT + groundPlaneBuffer;
-      const desiredViewBoxTop = desiredViewBoxBottom - viewBoxHeight;
-      const minTop = headTopY - ANATOMY.HEAD * 0.38;
-      const viewBoxY = Math.min(desiredViewBoxTop, minTop);
+      const viewBoxBottom = FLOOR_HEIGHT + groundPlaneBuffer;
+
+      const bodyHeight = viewBoxBottom - viewBoxTop;
+      const viewBoxHeight = Math.max(bodyHeight, heightByWidth);
+      const viewBoxWidth = viewBoxHeight * screenAspectRatio;
       const viewBoxX = -viewBoxWidth / 2;
 
-      return `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
+      return `${viewBoxX} ${viewBoxTop} ${viewBoxWidth} ${viewBoxHeight}`;
 
     } else {
       const c = configs[effectiveViewMode];
