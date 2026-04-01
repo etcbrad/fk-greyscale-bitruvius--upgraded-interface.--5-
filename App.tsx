@@ -13,8 +13,9 @@ import { POSE_LIBRARY_DB } from './pose-library-db';
 import { buildSubdivisionNodeLabel, createSubdivisionGhost, formatSubdivisionProgress, getAllSubdivisionStops, getAvailableSubdivisionIntervals, getIntervalMidpointProgress, sampleSubdivisionPose, sortSubdivisionNodes } from './utils/subdivision';
 
 const FABRIK_EFFECTORS = new Set<PartName>([
-  PartName.RElbow,
-  PartName.LElbow,
+  // Elbow IK temporarily disabled per request
+  // PartName.RElbow,
+  // PartName.LElbow,
   PartName.RWrist,
   PartName.LWrist,
   PartName.RSkin,
@@ -552,7 +553,7 @@ const App: React.FC = () => {
     applyChange();
   }, [createEditorSnapshot, pushHistorySnapshot]);
 
-  const [kinematicMode, setKinematicMode] = useState<KinematicMode>('fk');
+  const [kinematicMode, setKinematicMode] = useState<KinematicMode>('fabrik');
   const [facingMode, setFacingMode] = useState<FacingMode>('front');
   const [backView, setBackView] = useState(false);
   const [handModes, setHandModes] = useState<{ left: HandMode; right: HandMode }>({ left: 'neutral', right: 'neutral' });
